@@ -14,9 +14,13 @@ This project aims to create a reproducible analysis pipeline to generate a morta
 
 -   Lead Data Scientist: Xingzhong (Jason) Jin
 
-## Repository content
+## Repository Content
 
 -   `renv.lock`: list of packages used in the analysis
 -   `R`: analysis scripts and helper functions
 -   `output`: tables, figures and others generated from scripts
 -   `report`: where generated reports are saved
+
+## Technical Documentation
+
+-   [Statistical Methods](documentation/statistical-methods.md)

@@ -56,7 +56,7 @@ Typos and entry errors in the above datetime variables are systematically checke
 The following variables are collected in the ANZHFR that are related to the surgical procedures for hip fracture:
 
 | Variable | Description |
-|------------------------------------|------------------------------------|
+|----|----|
 | `surg` | An indicator of whether the patient undergoing surgical repair for the hip fracture |
 | `sdatetime` | Hip fracture surgery date/time |
 | `optype` | Type of operation for the hip fracture |
@@ -112,7 +112,7 @@ $$
 The ANZHFR model contains the following six variables:
 
 | Variable | Categories |
-|------------------------------------|------------------------------------|
+|----|----|
 | Age | 5-year age groups from 50 to 99; patients aged ≥100 are grouped into one category due to small sample size. |
 | Sex | ***Male*** and ***Female*** |
 | ASA | Categorised into 3 groups: (i) **ASA 1-2**; (ii) **ASA 3**; (iii) **ASA 4-5**. |
@@ -127,7 +127,7 @@ The selection of variables corresponds to the variables included in the NHFD mod
 Despite meticulous checking on data collection, missing values or unknown values are present in the data. For example, ASA grade was missing or recorded as unknown in 3,970 (7.7%) of records in 2022-24. The proportion of missing values and unknowns may affect standardising mortality at the hospital/region level. Some hospitals may need to be removed in a complete-case analysis because of high proportion of missing values or unknowns. To address the issue of missing values and unknowns, we use multiple imputation by chained equation (MICE) in all surgical patients with a valid date of death. We use permuted mean matching (PMM) to create 10 imputed datasets and each with 10 iterations. The imputation matrix below is used to fit the MICE model:
 
 |              | `age` | `sex` | `asa` | `walk` | `ftype` | `uresidence` | `afracture` | `mort30d` |
-|--------|--------|--------|--------|--------|--------|--------|--------|--------|
+|--------------|-------|-------|-------|--------|---------|--------------|-------------|-----------|
 | `age`        |       | \-    | \-    | \-     | \-      | \-           | \-          | \-        |
 | `sex`        | x     |       | x     | x      | x       | x            | x           | x         |
 | `asa`        | x     | \-    |       | x      | \-      | x            | \-          | x         |

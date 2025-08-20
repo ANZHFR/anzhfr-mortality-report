@@ -427,14 +427,14 @@ lab_vars <- function(data) {
   return(labbed_data)
 }
 
-# function to exclude data due to linkage issues - This function is superseded by directly excluding dataset of NoMatch
-exclude_linkage_issue <- function(data) {
-  selected_data <- data %>% 
-    filter(!(ahos_code == "AU10082" & report_year %in% 2017:2020)) %>% 
-    filter(!(ahos_code == "AU10076" & report_year == 2017:2019))
-  
-  return(selected_data)
-}
+# # function to exclude data due to linkage issues - This function is superseded by directly excluding dataset of NoMatch
+# exclude_linkage_issue <- function(data) {
+#   selected_data <- data %>% 
+#     filter(!(ahos_code == "AU10082" & report_year %in% 2017:2020)) %>% 
+#     filter(!(ahos_code == "AU10076" & report_year == 2017:2019))
+#   
+#   return(selected_data)
+# }
 
 
 # function to select a cohort for outcome modelling
