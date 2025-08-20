@@ -1,3 +1,6 @@
+# MacOS metadata file
+.DS_Store
+
 # History files
 .Rhistory
 .Rapp.history
@@ -48,3 +51,10 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 .Rproj.user
+
+# Target object folder
+_targets/
+
+# Folders not shared 
+data/
+report/
