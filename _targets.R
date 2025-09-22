@@ -12,6 +12,7 @@ library(qs2)
 library(crew)
 library(here)
 library(tidyverse)
+library(labelled)
 
 # Set target options:
 tar_option_set(
@@ -41,29 +42,43 @@ reportable_years <- 2019:2025
 # Analysis pipeline ---- 
 tar_plan(
   ## Data ETL ----
+  tar_target(latest_data, paste0(csv_datalake, list.files(csv_datalake, pattern = ".csv") %>% keep(str_detect(., max(str_sub(., 1, 6)))))), 
   tar_target(hoscodefile, here::here("data/hoscodes.csv"), format = "file"),
   tar_target(hoscode_data, readr::read_csv(hoscodefile, show_col_types = FALSE)),
-  tar_target(raw_data, get_anzhfr_data(csv_datalake)),
+  tar_target(raw_data, get_anzhfr_data(latest_data)),
   tar_target(tidy_data, 
-             clean_data(raw_data) %>% 
+             raw_data %>% 
+               mutate(country = ifelse(str_detect(ds, "_NZ_"), "nz", "au")) %>%
+               mutate(id = paste0(country, id)) %>%
+               deduplicate_data() %>%
+               clean_datetime() %>% 
+               clean_data() %>%  
+               transform_data() %>%
                left_join(hoscode_data %>% select(ahoscode, h_name), by = join_by(ahos_code == ahoscode))),
   tar_target(patient_journey, pt_journey(tidy_data)),
   tar_target(tedis_info, get_tedis(patient_journey)),
-  tar_target(tidy_data_tedis, 
-             get_mortality(tidy_data, tedis_info) %>% 
-               filter(!str_detect(ds, "NoMatch")) %>% # this replace the function exclude_linkage_issue()
+  
+  tar_target(tidy_data_tedis, get_mortality(tidy_data, tedis_info)), 
+  
+
+  
+  
+  ## Multiple imputations ----
+  # Customise the analysis data target below if needed
+  tar_target(analysis_data, tidy_data_tedis %>% 
+               filter(!str_detect(ds, "NoMatch")) %>% 
                filter(surg_yn == "Surgical") %>% 
                filter(report_year %in% 2016:(max(reportable_years)-1))), 
-  ## Multiple imputations ----
   
-  tar_target(mi_mids, mice_nhfd_pmm(tidy_data_tedis)), 
+  tar_target(mi_mids, mice_nhfd_pmm(labelled::remove_labels(analysis_data, keep_var_label = TRUE))), 
   tar_target(mi_mod_data, 
              complete(mi_mids, "all") %>% 
                map(~.x %>% select(-age, -starts_with("mort"))) %>% 
-               map(~.x %>% left_join(tidy_data_tedis %>% select(-names(.x)[names(.x) != "id"]), by = "id")) %>% 
+               map(~.x %>% left_join(analysis_data %>% select(-names(.x)[names(.x) != "id"]), by = "id")) %>% 
                map(~.x %>% select_data())), 
   tar_target(hosp_to_report, 
              get_report_hosp(mi_mod_data %>% pluck(1), years = reportable_years)), # already checked removing data won't result in the number of reported hospitals over the year.
+  
   ### Rolling year model ----
   tar_map(values = tidyr::expand_grid(reportable_year = reportable_years, 
                                       reportable_country = c("au", "nz")),
@@ -103,8 +118,8 @@ tar_plan(
     tar_target(mi_fulldata,
                mi_mod_data %>%
                  map(~.x %>% filter(country == reportable_country))),
-
-
+    
+    
     tar_target(mi_fullmod_mort30d,
                mi_fulldata %>% map(~glm(form_mort30d, data = .x, family = "binomial"))),
     tar_target(mi_fullpreds_mort30d,
@@ -113,7 +128,7 @@ tar_plan(
                summort_by_group(mi_fullpreds_mort30d, "report_year", all.vars(form_mort30d)[1])),
     tar_target(mi_fullamr_area_yearly_mort30d,
                summort_by_group(mi_fullpreds_mort30d, c("report_year", "area"), all.vars(form_mort30d)[1])),
-
+    
     tar_target(mi_fullmod_mort365d,
                mi_fulldata %>% map(~glm(form_mort365d, data = .x %>% filter(report_year < max(reportable_years) - 1), family = "binomial"))),
     tar_target(mi_fullpreds_mort365d,
@@ -123,7 +138,7 @@ tar_plan(
     tar_target(mi_fullamr_area_yearly_mort365d,
                summort_by_group(mi_fullpreds_mort365d, c("report_year", "area"), all.vars(form_mort365d)[1]))
   ),
-
+  
   tar_target(mi_trend_combo30d, 
              fun_annual_trend(mi_fullamr_yearly_mort30d_au, mi_fullamr_area_yearly_mort30d_au, mi_fullamr_yearly_mort30d_nz, y_lab = "Standardised mortality rate within 30 days")),
   tar_target(mi_trend_combo365d, 
@@ -131,14 +146,13 @@ tar_plan(
                               mi_fullamr_area_yearly_mort365d_au, 
                               mi_fullamr_yearly_mort365d_nz, 
                               y_lab = "Standardised mortality rate within 365 days")),
-
+  
   ## Reporting ----
   # ### Hospital code report 
   # tar_quarto(hoscode_report, path = here::here("R/hoscode_report.qmd"), quiet = FALSE),
   
   ### Mortality report 
   tar_quarto(mortality_report, path = here::here("R/mortality_report.qmd"),
-             # output_file = paste0(format(Sys.time(), '%y%m%d'), "-mortality-report-2024"),
              quiet = FALSE)
 )
 

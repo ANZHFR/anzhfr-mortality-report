@@ -49,7 +49,7 @@ knitr::include_graphics("https://anzhfr.org/wp-content/uploads/sites/1164/2021/0
 
 ```{r data, warning=FALSE}
 setwd(here::here())
-dat <- tar_read(tidy_data_tedis) 
+dat <- tar_read(analysis_data) 
 hoscode <- tar_read(hoscode_data)
 
 latest_report_year <- max(dat$report_year, na.rm = T)
@@ -133,7 +133,7 @@ Standardised mortality rates at hospital level are also reported. Results have b
 #| fig-cap: !expr paste0("Standardised mortality rate at 30 days by year for Australian states and New Zealand (2016-",latest_report_year,")") 
 
 
-# setwd(here::here())
+setwd(here::here())
 tar_read(mi_trend_combo30d)$plt_final
 
 ```
@@ -144,7 +144,7 @@ tar_read(mi_trend_combo30d)$plt_final
 #| label: fig-mort365d-trend
 #| fig-cap: !expr paste0("Standardised mortality rate at 365 days by year for Australian states and New Zealand (2016-",latest_report_year-1,")") 
 
-# setwd("..")
+setwd(here::here())
 tar_read(mi_trend_combo365d)$plt_final
 ```
 
@@ -154,7 +154,7 @@ tar_read(mi_trend_combo365d)$plt_final
 #| label: fig-mort30d-nz-funnel
 #| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 30 days – New Zealand hospitals (", latest_report_year-2, "-", latest_report_year, ")") 
 
-# setwd("..")
+setwd(here::here())
 p <- tar_read(mi_funnel_mort30d_2025_nz) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 30 days")
 replace_funnel_hname(p, hoscode)
 
@@ -166,7 +166,7 @@ replace_funnel_hname(p, hoscode)
 #| label: fig-mort30d-nz-ctpl
 #| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 30 days – New Zealand hospitals (", latest_report_year-2, "-", latest_report_year, ")") 
 
-# setwd("..")
+setwd(here::here())
 p <- tar_read(mi_smort_ctpl_mort30d_2025_nz) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 30 days")
 replace_ctpl_hname(p , hoscode)
 ```
@@ -177,7 +177,7 @@ replace_ctpl_hname(p , hoscode)
 #| label: fig-mort365d-nz-funnel
 #| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 365 days – New Zealand hospitals (", latest_report_year-3, "-", latest_report_year-1, ")") 
 
-# setwd("..")
+setwd(here::here())
 p <- tar_read(mi_funnel_mort365d_2024_nz) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 365 days")
 replace_funnel_hname(p, hoscode)
 ```
@@ -188,7 +188,7 @@ replace_funnel_hname(p, hoscode)
 #| label: fig-mort365d-nz-ctpl
 #| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 365 days – New Zealand hospitals (", latest_report_year-3, "-", latest_report_year-1, ")")
 
-# setwd("..")
+setwd(here::here())
 p <- tar_read(mi_smort_ctpl_mort365d_2024_nz) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 365 days")
 replace_ctpl_hname(p , hoscode)
 ```
@@ -200,7 +200,7 @@ replace_ctpl_hname(p , hoscode)
 #| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 3O days – Australian hospitals (", latest_report_year-2, "-", latest_report_year, ")") 
 
 
-# setwd("..")
+setwd(here::here())
 p <- tar_read(mi_funnel_mort30d_2025_au) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 30 days")
 replace_funnel_hname(p, hoscode)
 ```
@@ -212,7 +212,7 @@ replace_funnel_hname(p, hoscode)
 #| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 30 days – Australian hospitals (", latest_report_year-2, "-", latest_report_year, ")")
 
 
-# setwd("..")
+setwd(here::here())
 p <- tar_read(mi_smort_ctpl_mort30d_2025_au) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 30 days")
 replace_ctpl_hname(p , hoscode)
 ```
@@ -224,7 +224,7 @@ replace_ctpl_hname(p , hoscode)
 #| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 365 days – Australian hospitals (", latest_report_year-3, "-", latest_report_year-1, ")") 
 
 
-# setwd("..")
+setwd(here::here())
 p <- tar_read(mi_funnel_mort365d_2024_au) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 365 days")
 replace_funnel_hname(p, hoscode)
 ```
@@ -236,7 +236,7 @@ replace_funnel_hname(p, hoscode)
 #| label: fig-mort365d-au-ctpl
 #| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 365 day – Australian hospitals (", latest_report_year-3, "-", latest_report_year-1, ")") 
 
-# setwd("..")
+setwd(here::here())
 p <- tar_read(mi_smort_ctpl_mort365d_2024_au) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 365 days")
 replace_ctpl_hname(p , hoscode)
 ```
