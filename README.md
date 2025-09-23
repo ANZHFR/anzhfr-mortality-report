@@ -23,4 +23,6 @@ This project aims to create a reproducible analysis pipeline to generate a morta
 
 ## Technical Documentation
 
+-   [Data Dictionary](documentation/data-dictionary.md)
 -   [Statistical Methods](documentation/statistical-methods.md)
+  
