@@ -1,38 +1,16 @@
 ##
 ## Title: Modelling Functions for ANZHFR Mortality Data
-## Author: Xingzhong (Jason) Jin
+## Author: Dr Xingzhong (Jason) Jin
 ## Purpose: To collect functions for various adjusted mortality models
-## Last updated: 16 Apr 2025
+## Last updated: 23 Sep 2025
 ##
 
 
-# Reporting ----
-
-get_report_hosp <- function(model_data, years) {
-  
-  dat_hosp_npa <- model_data %>%
-    group_by(country, h_name, ahos_code, report_year) %>%
-    tally()
-  
-  hosp_reportable <- function(year) {
-    dat_hosp_npa %>% 
-      group_by(country, h_name, ahos_code) %>% 
-      filter((report_year >= year - 3) & (report_year < year)) %>% 
-      mutate(yrs = n(), 
-             vol = sum(n, na.rm = TRUE)) %>% 
-      mutate(reportable = (yrs >= 3 & vol >= 50)) %>%  # has 3-year look back & total vol ≥ 50
-      ungroup()
-  }
-  
-  hosp_to_report <- lapply(years, hosp_reportable) %>% 
-    set_names(years)
-  
-  
-  return(hosp_to_report)
-}
-
-
 # Multiple Imputations ---- 
+
+# function to multiple imputation on missing values related to mortality modelling 
+# input: analysis dataset
+# output: a imp object containing multiple imputed datasets 
 
 mice_nhfd_pmm <- function(data) {
   
@@ -70,48 +48,13 @@ mice_nhfd_pmm <- function(data) {
 }
 
 
-mice_nhfd <- function(data) {
-  
-  # Set multiple imputations parameters
-  rand_seed <- 12345
-  mi_form <- ~ age + sex_2l + asa_nhfd + walk_nhfd + ftype_nhfd + uresidence_nhfd + surg_yn + mort30d + afracture
-  
-  
-  
-  impdat <- data %>% select(id, all.vars(mi_form)) 
-  
-  # build imputation method
-  imp_method <- mice::make.method(impdat)
-  
-  imp_method["sex_2l"] <- "logreg"
-  imp_method["asa_nhfd"] <- "polr"
-  imp_method["walk_nhfd"] <- "polr"
-  imp_method["ftype_nhfd"] <- "logreg"
-  imp_method["uresidence_nhfd"] <- "logreg"
-  imp_method["mort30d"] <- "logreg"
-  # imp_method["mort120d"] <- "logreg"
-  # imp_method["mort365d"] <- "logreg"
-  imp_method["afracture"] <- "polr"
-  
-  imp_method
-  # build imputation matrix
-  imp_matrix <- mice::make.predictorMatrix(impdat)
-  
-  imp_matrix["id", ] <- 0 
-  imp_matrix[, "id"] <- 0 
-  imp_matrix["age",] <- 0 
-  imp_matrix["surg_yn", ] <- 0 
-  imp_matrix["asa_nhfd", ] <- 0
-  imp_matrix["asa_nhfd", c("surg_yn", "age", "uresidence_nhfd", "walk_nhfd", "mort30d")] <- 1
-  imp_matrix["mort30d", ] <- 0 
-  
-  imp <- mice::mice(impdat, m = 10, maxit = 10, seed = rand_seed, 
-                    method = imp_method, 
-                    predictorMatrix = imp_matrix, 
-                    print = TRUE)
-  
-  return(imp)
-}
+
+
+# Post-model estimation ----
+
+# function to Pool predictions from logistic regressions
+# input: a collection of logistic regressions on imputed datasets
+# output: analysis data attached with logit and probability
 
 pool.mice.scalar <- function(mi_rollmod) {
   set.seed(12345)
@@ -145,48 +88,9 @@ pool.mice.scalar <- function(mi_rollmod) {
 }
 
 
-# Modelling ----
-
-## crude mortality rate ----
-crude_mort_by_group <- function(data, group){
-  
-  cr_mort <- data %>% 
-    group_by({{group}}, year) %>% 
-    summarise(
-      n = n(), 
-      cr_mort30 = sum(mort30d, na.rm = TRUE)/n,
-      # cr_mort120 = sum(mort120d, na.rm = TRUE)/n, 
-      # cr_mort365 = sum(mort365d, na.rm = TRUE)/n, 
-      .groups = "drop")
-  
-  return(cr_mort)
-}
-
-
-## complete case model ----
-mod_logistic <- function(data, form) {
-  set.seed(12345)
-  mod <- glm(data = data, form = form, family = "binomial")
-  dat_pred <- mod$data
-  dat_pred$prob <- predict(mod, newdata = mod$data, type = "response")
-  logit_pred <- as.data.frame(predict(mod, newdata = mod$data, type = "link", se.fit = TRUE))
-  
-  dat_pred$logit <- logit_pred$fit
-  dat_pred$logit_se <- logit_pred$se.fit
-  
-  
-  res <- list(mod = mod, 
-              dat_pred = dat_pred)
-  return(res)
-}
-
-
-
-
-# Post-model estimation ----
 
 # function to summarise adjusted mortality rate by groups
-# input: dataset, group variable, response varaible
+# input: dataset, group variable, response variable
 # output: new dataset with group-level stats (e.g., mean, variance, etc.) and whole sample stats (e.g., mean se, ci)
 summort_by_group <- function(data, set_group, response) {
   
@@ -253,7 +157,34 @@ summort_by_group <- function(data, set_group, response) {
 }
 
 
-# Reporting ----
+# Reports and Graphs ----
+
+# function to determine the hospitals to be included in each year's report
+# input: analysis data, report years
+# output: a named list of reportable hospitals in each report year
+get_report_hosp <- function(analysis_data, years) {
+  
+  dat_hosp_npa <- analysis_data %>%
+    group_by(country, h_name, ahos_code, report_year) %>%
+    tally()
+  
+  hosp_reportable <- function(year) {
+    dat_hosp_npa %>% 
+      group_by(country, h_name, ahos_code) %>% 
+      filter((report_year >= year - 3) & (report_year < year)) %>% 
+      mutate(yrs = n(), 
+             vol = sum(n, na.rm = TRUE)) %>% 
+      mutate(reportable = (yrs >= 3 & vol >= 50)) %>%  # a hospital is reportable if it has 3-year look back & total surgical vol ≥ 50
+      ungroup()
+  }
+  
+  hosp_to_report <- lapply(years, hosp_reportable) %>% 
+    set_names(years)
+  
+  
+  return(hosp_to_report)
+}
+
 
 ## Funnel plot (by hospital) ----
 # function for standard funnel plot
@@ -453,7 +384,7 @@ fun_smr_ctpl_hosp <- function(data, title) {
   return(gph_ctpl)
 }
 
-## Trend plot on standardised rate ----
+## Trend plot on standardised mortality rate ----
 
 
 fun_annual_trend <- function(dat_au, dat_au_area, dat_nz, y_lab = "Standardised mortality rate") {
@@ -603,7 +534,7 @@ fun_annual_trend <- function(dat_au, dat_au_area, dat_nz, y_lab = "Standardised 
 }
 
 
-## Miscelleneous functions ----
+## Miscellaneous helper functions ----
 ### Function to remove a layer of plot ----
 remove_geom <- function(ggplot2_object, geom_type) {
   # Delete layers that match the requested type.
@@ -637,6 +568,7 @@ replace_funnel_hname <- function(ggplot2_object, hoscode_data) {
   
 }
 
+### Function to replace hospital name with report_id in caterpillar plot ----
 
 replace_ctpl_hname <- function(ggplot2_object, hoscode_data){
   labs <- left_join(data.frame(h_name = ggplot2_object$data$h_name), hoscode, by = "h_name")

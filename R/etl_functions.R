@@ -1,13 +1,16 @@
 ##
 ## Title: ETL Functions for ANZHFR Mortality Data
-## Author: Xingzhong (Jason) Jin
+## Author: Dr Xingzhong (Jason) Jin
 ## Purpose: To collect functions for the ETL processes
-## Last updated: 16 Apr 2025
+## Last updated: 23 Sep 2025
 ##
 
 # Data extraction ----
 
-# Extract latest ANZHFR data from datalake
+
+# function to extract latest ANZHFR data from datalake
+# input: a list of CSV files extracted from ANZHFR database
+# output: a R dataframe
 get_anzhfr_data <- function(latest_data) {
   
   require(tidyverse)
@@ -95,6 +98,31 @@ get_anzhfr_data <- function(latest_data) {
     findod          = col_date(format = "%d/%m/%Y")
   )
   
+  
+  # import into memory
+  dat_mort <- lapply(
+    latest_data,
+    readr::read_csv,
+    col_type = config_coltype,
+    show_col_types = FALSE,
+    na = "NULL",
+    name_repair = janitor::make_clean_names
+  ) %>%
+    set_names(latest_data) %>%
+    bind_rows(.id = "ds")
+  
+  return(dat_mort)
+  
+}
+
+# function to attach ANZHFR variable labels
+# input: a R dataframe
+# output: a labelled R dataframe
+
+anzhfr_var_labels <- function(data) {
+  require(tidyverse)
+  require(labelled)
+  
   ## Variable labels ----
   config_varlabs <- list(
     start_date          = "Start Date",
@@ -175,6 +203,19 @@ get_anzhfr_data <- function(latest_data) {
     predod              = "Preliminary Date of Death",
     findod              = "Final Date of Death"
   )
+  
+  dat_lbled <- data %>% 
+    set_variable_labels(.labels = config_varlabs, .strict = FALSE)
+  
+  return(dat_lbled)
+}
+
+# function to attach ANZHFR variable value labels and values indicating missingness
+# input: a R dataframe
+# output: a labelled R dataframe
+anzhfr_value_labels <- function(data) {
+  require(tidyverse)
+  require(labelled)
   
   ## Value labels ----
   
@@ -632,32 +673,19 @@ get_anzhfr_data <- function(latest_data) {
     fop2 = 99
   )
   
-  
-  
-  
-  # import into memory
-  dat_mort <- lapply(
-    latest_data,
-    readr::read_csv,
-    col_type = config_coltype,
-    show_col_types = FALSE,
-    na = "NULL",
-    name_repair = janitor::make_clean_names
-  ) %>%
-    set_names(latest_data) %>%
-    bind_rows(.id = "ds")
-  
-  dat_mort_labbelled <- dat_mort %>% 
-    set_variable_labels(.labels = config_varlabs) %>% 
-    set_value_labels(.labels = config_valuelabs) %>% 
+  dat_lbled <- data %>% 
+    set_value_labels(.labels = config_valuelabs, .strict = FALSE) %>% 
     nolabel_to_na() %>% 
-    set_na_values(.values = config_nalabs)
+    set_na_values(.values = config_nalabs, .strict = FALSE)
   
-  return(dat_mort_labbelled)
-  
+  return(dat_lbled)
 }
 
-# Create a patient journey dataset (ie. long-form of all datetime variables)
+
+# function to create a patient journey dataset (ie. event and datetime)
+# input: a dataframe with datetime in wide format
+# output: a dataframe with events and dates in long format
+
 pt_journey <- function(data) {
   journey_data <- data %>%
     select(id, where(is.POSIXct), where(is.Date), e_dadmit, h_name, -predod) %>%
@@ -833,7 +861,9 @@ get_tedis <- function(data) {
 }
 
 
-# create time to death based on the date of hip fracture diagnosis
+# function to calculate the mortality status within different timeframe
+# input: cleaned data, TEDIS information generated from patient journey
+# output: a dataframe with mortality indicators for 30, 90, 120 and 365-day
 
 get_mortality <- function(clean_data, tedis_info) {
   clean_data_with_mort <- left_join(
@@ -850,6 +880,18 @@ get_mortality <- function(clean_data, tedis_info) {
           days_to_death < 0 ~ NA,
           days_to_death >= 0 & days_to_death <= 30 ~ 1,
           days_to_death > 30 ~ 0,
+          .default = 0
+        ),
+        levels = c(0, 1),
+        labels = c("Alive", "Deceased")
+      )
+    ) %>%
+    mutate(
+      mort90d = factor(
+        case_when(
+          days_to_death < 0 ~ NA,
+          days_to_death >= 0 & days_to_death <= 90 ~ 1,
+          days_to_death > 90 ~ 0,
           .default = 0
         ),
         levels = c(0, 1),
@@ -885,7 +927,12 @@ get_mortality <- function(clean_data, tedis_info) {
 }
 
 
-# Match hospital codes with hospital names
+# Data cleaning ----
+
+# helper function to match hospital codes with hospital names
+# input: a R dataframe, dataframe that links hospital codes to hospital names
+# output: a labelled R dataframe
+
 label_hoscode <- function(data, hoscode_dat) {
   labled_data <- dplyr::left_join(
     data,
@@ -896,9 +943,9 @@ label_hoscode <- function(data, hoscode_dat) {
 }
 
 
-# Data cleaning ----
-
-# deduplicate records
+# function to deduplicate records
+# input: raw ANZHFR data
+# output: deduplicated dataset
 deduplicate_data <- function(data) {
   require(tidyverse)
   require(labelled)
@@ -948,9 +995,10 @@ deduplicate_data <- function(data) {
   return(dat_dd)
 }
 
+# function to clean up invalid datetime and typos
+# input: a R dataframe (duplicated raw data)
+# output: a R dataframe
 
-
-# Clean up rawdata's datetime typo
 clean_datetime <- function(data) {
   # New date cleaning process
   newdata <- data %>% 
@@ -996,7 +1044,10 @@ clean_datetime <- function(data) {
 }
 
 
-# clean up data errors and missing values
+
+# function to clean up data errors and missing values
+# input: a R dataframe (duplicated raw data)
+# output: a R dataframe
 clean_data <- function(raw_data) {
   
   dat_clean <- raw_data %>%
@@ -1009,7 +1060,9 @@ clean_data <- function(raw_data) {
   return(dat_clean)
 }
 
-
+# function to create analysis variables that match NHFR classification
+# input: a R dataframe (clean data)
+# output: a R dataframe
 transform_data <- function(raw_data) {
   require(tidyverse)
   require(labelled)
@@ -1057,17 +1110,10 @@ transform_data <- function(raw_data) {
 }
 
 
-# function to exclude data due to linkage issues - This function is superseded by directly excluding dataset of NoMatch
-exclude_linkage_issue <- function(data) {
-  selected_data <- data %>%
-    filter(!(ahos_code == "AU10082" & report_year %in% 2017:2020)) %>%
-    filter(!(ahos_code == "AU10076" & report_year == 2017:2019))
-  
-  return(selected_data)
-}
 
-
-# function to select a cohort for outcome modelling
+# function to create analysis cohort for modelling stage
+# input: a R dataframe (clean data)
+# output: a R dataframe of records that meet the eligibility criteria
 
 select_data <- function(data) {
   selected_data <- data %>%
@@ -1092,3 +1138,6 @@ select_data <- function(data) {
   
   return(selected_data)
 }
+
+
+

@@ -45,7 +45,7 @@ tar_plan(
   tar_target(latest_data, paste0(csv_datalake, list.files(csv_datalake, pattern = ".csv") %>% keep(str_detect(., max(str_sub(., 1, 6)))))), 
   tar_target(hoscodefile, here::here("data/hoscodes.csv"), format = "file"),
   tar_target(hoscode_data, readr::read_csv(hoscodefile, show_col_types = FALSE)),
-  tar_target(raw_data, get_anzhfr_data(latest_data)),
+  tar_target(raw_data, get_anzhfr_data(latest_data) %>% anzhfr_var_labels() %>% anzhfr_value_labels()),
   tar_target(tidy_data, 
              raw_data %>% 
                mutate(country = ifelse(str_detect(ds, "_NZ_"), "nz", "au")) %>%
