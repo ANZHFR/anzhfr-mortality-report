@@ -20,21 +20,67 @@ format:
     toc-depth: 3
 execute: 
   echo: false
+  warning: false
+  message: false
 editor: source
 fig-cap-location: top
+# Set default figure sizes globally here to keep chunks clean
+fig-height: 10
+fig-width: 10
 ---
 
-```{r setup, message=FALSE, error=FALSE}
-
-# Preambles 
+```{r setup}
+# Load packages
 library(targets)
 library(tidyverse)
 library(knitr)
 library(kableExtra)
+library(here)
+library(scales)
 
-# Functions
-tar_source("R/mod_functions.R")
+# Source plotting functions needed for the report
+# Note: In a strict targets workflow, we usually avoid sourcing files in reports,
+# but we need 'replace_funnel_hname' available in the environment.
+tar_source(here("R/mod_functions.R"))
 
+# Load Main Data
+dat <- tar_read(analysis_data)
+hoscode <- tar_read(hoscode_data)
+
+# Define Logic Variables
+latest_report_year <- max(dat$report_year, na.rm = TRUE)
+prev_year <- latest_report_year - 1
+start_3yr <- latest_report_year - 2
+
+# Helper Function to load targets dynamically
+# This prevents hardcoding "2025" or "au" in chunk code.
+# Assumes target naming convention: {base}_{outcome}_{year}_{country}
+get_plot_target <- function(base_name, outcome, year, country) {
+  target_name <- paste(base_name, outcome, year, country, sep = "_")
+  # Use tar_read to read a target using a string name
+  tar_read_raw(target_name)
+}
+
+# Pre-calculate counts for text
+hosp_counts <- list(
+  total = n_distinct(dat$h_name[dat$report_year == latest_report_year]),
+  au = n_distinct(dat$h_name[dat$report_year == latest_report_year & dat$country == "au"]),
+  nz = n_distinct(dat$h_name[dat$report_year == latest_report_year & dat$country == "nz"])
+)
+
+# Pre-calculate ASA Missingness
+calc_asa_miss <- function(data, years) {
+  data |>
+    filter(report_year %in% years) |>
+    group_by(is_missing = is.na(asa)) |>
+    summarise(n = n(), .groups = "drop") |>
+    mutate(pct = percent(n / sum(n), accuracy = 0.1)) |>
+    mutate(n_fmt = comma(n)) |>
+    filter(is_missing)
+}
+
+asa_this <- calc_asa_miss(dat, start_3yr:latest_report_year)
+asa_last <- calc_asa_miss(dat, (start_3yr - 1):prev_year)
 ```
 
 # FRONT COVER
@@ -49,16 +95,15 @@ knitr::include_graphics("https://anzhfr.org/wp-content/uploads/sites/1164/2021/0
 
 ```{r data, warning=FALSE}
 setwd(here::here())
-dat <- tar_read(analysis_data) 
+dat <- tar_read(analysis_data)
 hoscode <- tar_read(hoscode_data)
 
 latest_report_year <- max(dat$report_year, na.rm = T)
-
 ```
 
 
 **Enhancing Outcomes for Older People**
-The Australian and New Zealand Hip Fracture Registry (ANZHFR) extends its sincere thanks to the multidisciplinary teams of the `r n_distinct(dat$h_name[dat$report_year == latest_report_year])` hospitals that contributed patient-level data in `r latest_report_year` (`r n_distinct(dat$h_name[dat$report_year == latest_report_year & dat$country == "au"])` in Australia and `r n_distinct(dat$h_name[dat$report_year == latest_report_year & dat$country == "nz"])` in New Zealand). Your extraordinary efforts make this report possible.
+The Australian and New Zealand Hip Fracture Registry (ANZHFR) extends its sincere thanks to the multidisciplinary teams of the `r hosp_counts$total` hospitals that contributed patient-level data in `r latest_report_year` (`r hosp_counts$au` in Australia and `r hosp_counts$nz` in New Zealand).  Your extraordinary efforts make this report possible.
 
 The ANZHFR receives funding from the Australian Government Department of Health and Aged Care, New Zealand Accident Compensation Corporation, NSW Health Agency for Clinical Innovation, Victorian Agency for Health Information, SA Health, WA Health and Queensland Health, and receives in-kind support from Neuroscience Research Australia, UNSW Sydney and the New Zealand Orthopaedic Association.
 
@@ -85,159 +130,148 @@ The ANZHFR thanks Dr Peter Humburg, Biostatistician, NeuRA, for assistance with 
 
 Suggested citation: Australian and New Zealand Hip Fracture Registry. Mortality report `r latest_report_year`. Available at <https://anzhfr.org/registry-reports/>
 
-# CONTENTS
+# CONTENTS 
 
 ## ABBREVIATIONS
 
 ## CO-CHAIRS’ FOREWORD / EXECUTIVE SUMMARY
 
 ```{r intro}
-asa_na_this <- dat %>% 
-  filter(report_year %in% (latest_report_year - 2):latest_report_year) %>% 
-  group_by(is.na(asa)) %>% 
-  summarise(n = n()) %>%
-  mutate(pct = scales::percent(n/sum(n), accuracy = 0.1)) %>% 
+asa_na_this <- dat |>
+  filter(report_year %in% (latest_report_year - 2):latest_report_year) |>
+  group_by(is.na(asa)) |>
+  summarise(n = n()) |>
+  mutate(pct = scales::percent(n / sum(n), accuracy = 0.1)) |>
   mutate(n = scales::number(n, big.mark = ","))
 
-asa_na_last <- dat %>% 
-  filter(report_year %in% (latest_report_year - 3):(latest_report_year - 1)) %>% 
-  group_by(is.na(asa)) %>% 
-  summarise(n = n()) %>% 
-  mutate(pct = scales::percent(n/sum(n), accuracy = 0.1)) %>% 
+asa_na_last <- dat |>
+  filter(report_year %in% (latest_report_year - 3):(latest_report_year - 1)) |>
+  group_by(is.na(asa)) |>
+  summarise(n = n()) |>
+  mutate(pct = scales::percent(n / sum(n), accuracy = 0.1)) |>
   mutate(n = scales::number(n, big.mark = ","))
-  
 ```
 
 
 
 ## INTRODUCTION
-Mortality has been risk-adjusted for age, sex, pre-morbid level of function (mobility), fracture type, residence type and ASA grade. Data is presented for two follow-up periods and in two ways. The follow-up periods are 30- and 365-days following presentation with a hip fracture. Both 30-day and 365-day mortality are common benchmarks for hip fracture care. Mortality at 365 days is more likely to be influenced by factors beyond hospital care, but remains an important outcome for patients. ASA grade has been aggregated as (i) ASA grades 1 to 2; (ii) ASA grade 3; and (iii) ASA grades 4 and 5, according to relevant literature[^1]. It is important to note that ASA grade was missing or recorded as unknown in `r asa_na_this$n[2]` (`r asa_na_this$pct[2]`) of patient records in `r (latest_report_year - 2)`-`r latest_report_year` and `r asa_na_last$n[2]` (`r asa_na_last$pct[2]`) of patient records in `r (latest_report_year - 3)`-`r (latest_report_year - 1)`. The proportion of missings/unknowns affects standardising mortality at the hospital level. Reviewing, and where needed, increasing the proportion of patients for whom a known ASA grade is recorded as part of the data collection should be an area of continuous improvement for hospitals. Usual place of residence has been aggregated into two categories (i) private residence or (ii) residential care facility or other. There were a very small number of missing and unknown in covariates other than ASA that were affecting the statistical model. The missing/unknown values of covariates were handled by multiple imputation by chained equation (MICE)[^2] before constructing the statistical model. 
+Mortality has been risk-adjusted for age, sex, pre-morbid level of function (mobility), fracture type, residence type and ASA grade. Data is presented for two follow-up periods and in two ways. The follow-up periods are 30- and 365-days following presentation with a hip fracture. Both 30-day and 365-day mortality are common benchmarks for hip fracture care. Mortality at 365 days is more likely to be influenced by factors beyond hospital care, but remains an important outcome for patients. 
 
-[^1]: Tsang C CD. (2014). Statistical methods developed for the National Hip Fracture Database annual report, 2014: a technical report. London: The Royal College of Surgeons of England.
-[^2]: Buuren SV (2011). mice: Multivariate Imputation by Chained Equations in R. Journal of Statistical Software 2011;45:1-67.
+ASA grade has been aggregated as (i) ASA grades 1 to 2; (ii) ASA grade 3; and (iii) ASA grades 4 and 5, according to relevant literature[^1]. 
+
+It is important to note that ASA grade was missing or recorded as unknown in `r asa_this$n_fmt` (`r asa_this$pct`) of patient records in `r start_3yr`-`r latest_report_year` and `r asa_last$n_fmt` (`r asa_last$pct`) of patient records in `r (start_3yr - 1)`-`r prev_year`. The proportion of missings/unknowns affects standardising mortality at the hospital level. Reviewing, and where needed, increasing the proportion of patients for whom a known ASA grade is recorded as part of the data collection should be an area of continuous improvement for hospitals. 
+
+Usual place of residence has been aggregated into two categories (i) private residence or (ii) residential care facility or other. There were a very small number of missing and unknown in covariates other than ASA that were affecting the statistical model. The missing/unknown values of covariates were handled by multiple imputation by chained equation (MICE)[^2] before constructing the statistical model. 
 
 In this report, the standardised mortality rate at 30 days and 365 days for all surgical patients is presented by year for Australian states for the period 2016-`r max(dat$report_year[dat$country == "au"])`, and New Zealand for the period 2017-`r max(dat$report_year[dat$country == "nz"])` (@fig-mort30d-trend and @fig-mort365d-trend). It should be noted that the number of hospitals reporting in each state has grown over time from 2016, which has improved the generalisability of the results in recent years. Mortality rates for South Australia do not include all the hospitals for the period 2018-2020 because patient identifiers were not permitted to be collected for some hospitals, which meant the records were unable to be linked to the National Death Index (NDI). Mortality rate for Tasmania is not reported for 2016 due to a very small number of records. 
 
-Standardised mortality rates at hospital level are also reported. Results have been aggregated over a three-year period to limit the effect of yearly fluctuations at hospital level. Pooled data is used for all surgical patients included in the Registry from each site, from the start of `r (latest_report_year - 2)` to the end of `r latest_report_year` for 30-day mortality and from the start of `r (latest_report_year - 3)` to the end of `r (latest_report_year - 1)` for 365-day mortality. Hospitals that have not been contributing patient level data for the specified three-year period, or have less than 50 surgical patients for the specified three-year period, have not been included. Data are presented in funnel plots[^3] (@fig-mort30d-nz-funnel, @fig-mort365d-nz-funnel, @fig-mort30d-au-funnel and @fig-mort365d-au-funnel), where each dot represents a hospital site, and the x-axis represents hospital surgical volume. Because of the higher precision from a greater number of patients, data points should ‘funnel’ to a narrower distribution on the right side of the funnel plot. The horizontal line represents the national mortality rate over the three-year time period. Hospitals above the line have a higher risk-adjusted mortality rate than the national rate and those below the line have a lower risk-adjusted mortality rate than the national rate. Control limits set at 2 and 3 standard deviations (95% and 99.7%) are included so that outliers can be seen. 
+Standardised mortality rates at hospital level are also reported. Results have been aggregated over a three-year period to limit the effect of yearly fluctuations at hospital level. Pooled data is used for all surgical patients included in the Registry from each site, from the start of `r start_3yr` to the end of `r latest_report_year` for 30-day mortality and from the start of `r (start_3yr - 1)` to the end of `r prev_year` for 365-day mortality. Hospitals that have not been contributing patient level data for the specified three-year period, or have less than 50 surgical patients for the specified three-year period, have not been included. 
 
-[^3]: Spiegelhalter DJ (2005). Funnel plots for comparing institutional performance. Stat Med. 2005 Apr 30;24(8):1185-202. doi: 10.1002/sim.1970. PMID: 15568194.
+Data are presented in funnel plots[^3] (@fig-mort30d-nz-funnel, @fig-mort365d-nz-funnel, @fig-mort30d-au-funnel and @fig-mort365d-au-funnel), where each dot represents a hospital site, and the x-axis represents hospital surgical volume. Because of the higher precision from a greater number of patients, data points should ‘funnel’ to a narrower distribution on the right side of the funnel plot. The horizontal line represents the national mortality rate over the three-year time period. Hospitals above the line have a higher risk-adjusted mortality rate than the national rate and those below the line have a lower risk-adjusted mortality rate than the national rate. Control limits set at 2 and 3 standard deviations (95% and 99.7%) are included so that outliers can be seen. 
 
 @fig-mort30d-nz-ctpl, @fig-mort365d-nz-ctpl, @fig-mort30d-au-ctpl and @fig-mort365d-au-ctpl are ‘caterpillar’ plots (named because of their resemblance to a caterpillar) where each hospital is ranked according to the risk-adjusted mortality rate standardised to the national rate and the ‘legs’ of the caterpillar represent the 95% confidence interval.
 
-
-
-
-
-```{r warning=FALSE, fig.height=10, fig.width=10}
+```{r}
 #| label: fig-mort30d-trend
 #| fig-cap: !expr paste0("Standardised mortality rate at 30 days by year for Australian states and New Zealand (2016-",latest_report_year,")") 
 
-
-setwd(here::here())
 tar_read(mi_trend_combo30d)$plt_final
-
 ```
 
-
-
-```{r warning=FALSE, fig.height=10, fig.width=10}
+```{r}
 #| label: fig-mort365d-trend
-#| fig-cap: !expr paste0("Standardised mortality rate at 365 days by year for Australian states and New Zealand (2016-",latest_report_year-1,")") 
+#| fig-cap: !expr paste0("Standardised mortality rate at 365 days by year for Australian states and New Zealand (2016-",prev_year,")") 
 
-setwd(here::here())
 tar_read(mi_trend_combo365d)$plt_final
 ```
 
-
-
-```{r warning=FALSE, fig.height=8, fig.width=10}
+```{r}
 #| label: fig-mort30d-nz-funnel
-#| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 30 days – New Zealand hospitals (", latest_report_year-2, "-", latest_report_year, ")") 
+#| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 30 days – New Zealand hospitals (", start_3yr, "-", latest_report_year, ")") 
 
-setwd(here::here())
-p <- tar_read(mi_funnel_mort30d_2025_nz) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 30 days")
+p <- get_plot_target("mi_funnel", "mort30d", latest_report_year, "nz") + 
+  theme(plot.title = element_blank()) + 
+  labs(y = "Standardised mortality rate within 30 days")
 replace_funnel_hname(p, hoscode)
-
 ```
 
-
-
-```{r warning=FALSE, fig.height=10, fig.width=10}
+```{r}
 #| label: fig-mort30d-nz-ctpl
-#| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 30 days – New Zealand hospitals (", latest_report_year-2, "-", latest_report_year, ")") 
+#| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 30 days – New Zealand hospitals (", start_3yr, "-", latest_report_year, ")") 
 
-setwd(here::here())
-p <- tar_read(mi_smort_ctpl_mort30d_2025_nz) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 30 days")
+p <- get_plot_target("mi_smort_ctpl", "mort30d", latest_report_year, "nz") + 
+  theme(plot.title = element_blank()) + 
+  labs(y = "Standardised mortality rate within 30 days")
 replace_ctpl_hname(p , hoscode)
 ```
 
-
-
-```{r warning=FALSE, fig.height=8, fig.width=10}
+```{r}
 #| label: fig-mort365d-nz-funnel
-#| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 365 days – New Zealand hospitals (", latest_report_year-3, "-", latest_report_year-1, ")") 
+#| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 365 days – New Zealand hospitals (", start_3yr - 1, "-", prev_year, ")") 
 
-setwd(here::here())
-p <- tar_read(mi_funnel_mort365d_2024_nz) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 365 days")
+# NOTE: 365d reports use the previous year
+p <- get_plot_target("mi_funnel", "mort365d", latest_report_year, "nz") + 
+  theme(plot.title = element_blank()) + 
+  labs(y = "Standardised mortality rate within 365 days")
 replace_funnel_hname(p, hoscode)
 ```
 
-
-
-```{r warning=FALSE, fig.height=10, fig.width=10}
+```{r}
 #| label: fig-mort365d-nz-ctpl
-#| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 365 days – New Zealand hospitals (", latest_report_year-3, "-", latest_report_year-1, ")")
+#| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 365 days – New Zealand hospitals (", start_3yr - 1, "-", prev_year, ")")
 
-setwd(here::here())
-p <- tar_read(mi_smort_ctpl_mort365d_2024_nz) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 365 days")
+# NOTE: 365d reports use the previous year
+p <- get_plot_target("mi_smort_ctpl", "mort365d", latest_report_year, "nz") + 
+  theme(plot.title = element_blank()) + 
+  labs(y = "Standardised mortality rate within 365 days")
 replace_ctpl_hname(p , hoscode)
 ```
 
-
-
-```{r warning=FALSE, fig.height=8, fig.width=10}
+```{r}
 #| label: fig-mort30d-au-funnel
-#| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 3O days – Australian hospitals (", latest_report_year-2, "-", latest_report_year, ")") 
+#| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 3O days – Australian hospitals (", start_3yr, "-", latest_report_year, ")") 
 
-
-setwd(here::here())
-p <- tar_read(mi_funnel_mort30d_2025_au) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 30 days")
+p <- get_plot_target("mi_funnel", "mort30d", latest_report_year, "au") + 
+  theme(plot.title = element_blank()) + 
+  labs(y = "Standardised mortality rate within 30 days")
 replace_funnel_hname(p, hoscode)
 ```
 
-
-
-```{r warning=FALSE, fig.height=15, fig.width=10}
+```{r}
 #| label: fig-mort30d-au-ctpl
-#| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 30 days – Australian hospitals (", latest_report_year-2, "-", latest_report_year, ")")
+#| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 30 days – Australian hospitals (", start_3yr, "-", latest_report_year, ")")
 
-
-setwd(here::here())
-p <- tar_read(mi_smort_ctpl_mort30d_2025_au) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 30 days")
+p <- get_plot_target("mi_smort_ctpl", "mort30d", latest_report_year, "au") + 
+  theme(plot.title = element_blank()) + 
+  labs(y = "Standardised mortality rate within 30 days")
 replace_ctpl_hname(p , hoscode)
 ```
 
-
-
-```{r warning=FALSE, fig.height=8, fig.width=10}
+```{r}
 #| label: fig-mort365d-au-funnel
-#| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 365 days – Australian hospitals (", latest_report_year-3, "-", latest_report_year-1, ")") 
+#| fig-cap: !expr paste0("Funnel plot of standardised mortality rate at 365 days – Australian hospitals (", start_3yr - 1, "-", prev_year, ")") 
 
-
-setwd(here::here())
-p <- tar_read(mi_funnel_mort365d_2024_au) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 365 days")
+# NOTE: 365d reports use the previous year
+p <- get_plot_target("mi_funnel", "mort365d", latest_report_year, "au") + 
+  theme(plot.title = element_blank()) + 
+  labs(y = "Standardised mortality rate within 365 days")
 replace_funnel_hname(p, hoscode)
 ```
 
-
-
-
-```{r warning=FALSE, fig.height=15, fig.width=10}
+```{r}
 #| label: fig-mort365d-au-ctpl
-#| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 365 day – Australian hospitals (", latest_report_year-3, "-", latest_report_year-1, ")") 
+#| fig-cap: !expr paste0("Caterpillar plot of standardised mortality rate at 365 day – Australian hospitals (", start_3yr - 1, "-", prev_year, ")") 
 
-setwd(here::here())
-p <- tar_read(mi_smort_ctpl_mort365d_2024_au) + theme(plot.title = element_blank()) + labs(y = "Standardised mortality rate within 365 days")
+# NOTE: 365d reports use the previous year
+p <- get_plot_target("mi_smort_ctpl", "mort365d", latest_report_year, "au") + 
+  theme(plot.title = element_blank()) + 
+  labs(y = "Standardised mortality rate within 365 days")
 replace_ctpl_hname(p , hoscode)
 ```
 
+[^1]: Tsang C CD. (2014). Statistical methods developed for the National Hip Fracture Database annual report, 2014: a technical report. London: The Royal College of Surgeons of England. 
+
+[^2]: Buuren SV (2011). mice: Multivariate Imputation by Chained Equations in R. Journal of Statistical Software 2011;45:1-67. 
+
+
+[^3]: Spiegelhalter DJ (2005). Funnel plots for comparing institutional performance. Stat Med. 2005 Apr 30;24(8):1185-202. doi: 10.1002/sim.1970. PMID: 15568194.
