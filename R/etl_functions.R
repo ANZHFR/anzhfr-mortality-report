@@ -9,83 +9,90 @@
 
 # A list of variable types in the ANZHFR dataset for future reference
 config_coltype <- list(
-  start_date        = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
-  report_id         = readr::col_character(),
-  id                = readr::col_character(),
-  area              = readr::col_character(),
-  age               = readr::col_double(),
-  sex               = readr::col_double(),
-  indig             = readr::col_double(),
-  ethnic            = readr::col_double(),
-  a_pcode           = readr::col_character(),
-  ptype             = readr::col_double(),
-  uresidence        = readr::col_double(),
-  ahos_code         = readr::col_character(),
-  e_dadmit          = readr::col_double(),
-  athoscode         = readr::col_character(),
-  tarrdatetime      = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
-  arrdatetime       = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
-  depdatetime       = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
-  admdatetimeop     = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
-  painassess        = readr::col_double(),
-  painmanage        = readr::col_double(),
-  ward              = readr::col_double(),
-  tfanalges         = readr::col_double(),
-  walk              = readr::col_double(),
-  amts              = readr::col_double(),
-  cogassess         = readr::col_double(),
-  cogstat           = readr::col_double(),
-  bonemed           = readr::col_double(),
-  passess           = readr::col_double(),
-  side              = readr::col_double(),
-  afracture         = readr::col_double(),
-  ftype             = readr::col_double(),
-  surg              = readr::col_double(),
-  asa               = readr::col_double(),
-  frailty           = readr::col_double(),
-  addelassess       = readr::col_double(),
-  sdatetime         = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
-  delay             = readr::col_double(),
-  anaesth           = readr::col_double(),
-  analges           = readr::col_double(),
-  consult           = readr::col_double(),
-  optype            = readr::col_double(),
+  start_date = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
+  hosp_report_id = readr::col_character(),
+  id = readr::col_character(),
+  area = readr::col_character(),
+  age = readr::col_double(),
+  sex = readr::col_double(),
+  indig = readr::col_double(),
+  ethnic = readr::col_double(),
+  a_pcode = readr::col_character(),
+  ptype = readr::col_double(),
+  uresidence = readr::col_double(),
+  ahos_code = readr::col_character(),
+  e_dadmit = readr::col_double(),
+  athoscode = readr::col_character(),
+  tarrdatetime = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
+  arrdatetime = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
+  depdatetime = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
+  admdatetimeop = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
+  painassess = readr::col_double(),
+  painmanage = readr::col_double(),
+  ward = readr::col_double(),
+  tfanalges = readr::col_double(),
+  walk = readr::col_double(),
+  amts = readr::col_double(),
+  cogassess = readr::col_double(),
+  cogstat = readr::col_double(),
+  bonemed = readr::col_double(),
+  passess = readr::col_double(),
+  side = readr::col_double(),
+  afracture = readr::col_double(),
+  ftype = readr::col_double(),
+  surg = readr::col_double(),
+  asa = readr::col_double(),
+  frailty = readr::col_double(),
+  addelassess = readr::col_double(),
+  sdatetime = readr::col_datetime(format = "%d/%m/%Y %H:%M"),
+  delay = readr::col_double(),
+  anaesth = readr::col_double(),
+  analges = readr::col_double(),
+  consult = readr::col_double(),
+  optype = readr::col_double(),
   inter_op_fracture = readr::col_double(),
-  wbear             = readr::col_double(),
-  mobil             = readr::col_double(),
-  pulcers           = readr::col_double(),
-  gerimed           = readr::col_double(),
-  gdate             = readr::col_date(format = "%d/%m/%Y"),
-  fassess           = readr::col_double(),
-  dbonemed1         = readr::col_double(),
-  delassess         = readr::col_double(),
-  malnutrition      = readr::col_double(),
-  mobil2            = readr::col_double(),
-  ons               = readr::col_double(),
-  wdisch            = readr::col_date(format = "%d/%m/%Y"),
-  wdest             = readr::col_double(),
-  hdisch            = readr::col_date(format = "%d/%m/%Y"),
-  olos              = readr::col_double(),
-  tlos              = readr::col_double(),
-  dresidence        = readr::col_double(),
-  fdate1            = readr::col_date(format = "%d/%m/%Y"),
-  date30            = readr::col_date(format = "%d/%m/%Y"),
-  fsurvive1         = readr::col_double(),
-  fresidence1       = readr::col_double(),
-  weight_bear30     = readr::col_double(),
-  fwalk1            = readr::col_double(),
-  fbonemed1         = readr::col_double(),
-  fop1              = readr::col_double(),
-  fdate2            = readr::col_date(format = "%d/%m/%Y"),
-  date120           = readr::col_date(format = "%d/%m/%Y"),
-  fsurvive2         = readr::col_double(),
-  fresidence2       = readr::col_double(),
-  weight_bear120    = readr::col_double(),
-  fwalk2            = readr::col_double(),
-  fbonemed2         = readr::col_double(),
-  fop2              = readr::col_double(),
-  predod            = readr::col_date(format = "%d/%m/%Y"),
-  findod            = readr::col_date(format = "%d/%m/%Y")
+  wbear = readr::col_double(),
+  mobil = readr::col_double(),
+  pulcers = readr::col_double(),
+  gerimed = readr::col_double(),
+  gdate = readr::col_date(format = "%d/%m/%Y"),
+  fassess = readr::col_double(),
+  dbonemed1 = readr::col_double(),
+  delassess = readr::col_double(),
+  malnutrition = readr::col_double(),
+  mobil2 = readr::col_double(),
+  ons = readr::col_double(),
+  wdisch = readr::col_date(format = "%d/%m/%Y"),
+  wdest = readr::col_double(),
+  hdisch = readr::col_date(format = "%d/%m/%Y"),
+  olos = readr::col_double(),
+  tlos = readr::col_double(),
+  dresidence = readr::col_double(),
+  fdate1 = readr::col_date(format = "%d/%m/%Y"),
+  date30 = readr::col_date(format = "%d/%m/%Y"),
+  fsurvive1 = readr::col_double(),
+  fresidence1 = readr::col_double(),
+  weight_bear30 = readr::col_double(),
+  fwalk1 = readr::col_double(),
+  fbonemed1 = readr::col_double(),
+  fop1 = readr::col_double(),
+  fdate2 = readr::col_date(format = "%d/%m/%Y"),
+  date120 = readr::col_date(format = "%d/%m/%Y"),
+  fsurvive2 = readr::col_double(),
+  fresidence2 = readr::col_double(),
+  weight_bear120 = readr::col_double(),
+  fwalk2 = readr::col_double(),
+  fbonemed2 = readr::col_double(),
+  fop2 = readr::col_double(),
+  predod = readr::col_date(format = "%d/%m/%Y"),
+  findod = readr::col_date(format = "%d/%m/%Y"),
+  eq5dmob = readr::col_double(),
+  eq5dcare = readr::col_double(),
+  eq5dact = readr::col_double(),
+  eq5dpain = readr::col_double(),
+  eq5danx = readr::col_double(),
+  eq5dhealth = readr::col_double(),
+  .default = readr::col_character()
 )
 
 #' Extract latest ANZHFR data from datalake
@@ -94,21 +101,55 @@ config_coltype <- list(
 #' @param config_coltype A list of column types
 #' @return A R dataframe
 get_anzhfr_data <- function(latest_data, config_coltype) {
-  # import into memory
-  dat_mort <- lapply(
-    latest_data,
-    readr::read_csv,
-    col_type = config_coltype,
-    show_col_types = FALSE,
-    na = "NULL",
-    name_repair = janitor::make_clean_names
+  # check for colname consistency
+  test_data <- read_csv(latest_data[[1]],
+    n_max = 1,
+    col_types = cols(.default = "c"),
+    show_col_types = F
+  )
+
+  rawnames <- colnames(test_data)
+  stdnames <- names(config_coltype)
+
+  # check distance between raw names and standard names
+  string_distance <- adist(rawnames, stdnames,
+    costs = list(
+      insertions = 0.25,
+      deletions = 0.25,
+      substitutions = 1
+    ),
+    ignore.case = T
+  )
+
+  colname_match <- tibble(
+    rawname = rawnames,
+    rawname_index = 1:length(rawnames),
+    matchname = stdnames[apply(string_distance, 1, which.min)],
+    matchname_index = apply(string_distance, 1, which.min),
+    distance = apply(string_distance, 1, min)
   ) |>
-    set_names(latest_data) |>
-    bind_rows(.id = "ds") |>
+    # Safety threshold if the words are too different
+    mutate(safety_threshod = ifelse(distance < 2, T, F)) |>
+    mutate(modifed_names = ifelse(safety_threshod == F, tolower(rawname), matchname)) |>
+    mutate(matchname_index = ifelse(safety_threshod == F, NA, matchname_index))
+
+  # import into memory
+  imported_data <-
+    lapply(
+      latest_data,
+      readr::read_csv,
+      skip = 1,
+      col_names = colname_match$modifed_names,
+      col_type = config_coltype,
+      show_col_types = FALSE,
+      na = "NULL",
+      id = "ds",
+    ) |>
+    bind_rows() |>
     mutate(country = if_else(str_detect(ds, "_NZ_"), "nz", "au")) |>
     mutate(id = paste0(country, str_pad(id, width = 6, side = "left", pad = "0")))
 
-  return(dat_mort)
+  return(imported_data)
 }
 
 #' Attach ANZHFR variable labels
@@ -119,7 +160,7 @@ anzhfr_var_labels <- function(data) {
   # Variable labels
   config_varlabs <- list(
     start_date          = "Start Date",
-    report_id           = "Hospital ID for Reporting",
+    hosp_report_id      = "Hospital ID for Reporting",
     id                  = "Record Unique Identifier",
     area                = "Australian and New Zealand Jurisdiction",
     age                 = "Age",
@@ -194,7 +235,13 @@ anzhfr_var_labels <- function(data) {
     fbonemed2           = "Bone Protection Medication at 120-day Follow-up",
     fop2                = "Re-operation within 120-day Follow-up",
     predod              = "Preliminary Date of Death",
-    findod              = "Final Date of Death"
+    findod              = "Final Date of Death",
+    eq5dmob             = "EQ-5D-5L Mobility",
+    eq5dcare            = "EQ-5D-5L Self Care",
+    eq5dact             = "EQ-5D-5L Usual Activities",
+    eq5dpain            = "EQ-5D-5L Pain/Discomfort",
+    eq5danx             = "EQ-5D-5L Anxiety/Depression",
+    eq5dhealth          = "EQ-5D-5L Health Status"
   )
 
   dat_lbled <- data |>
@@ -605,6 +652,41 @@ anzhfr_value_labels <- function(data) {
       "Revision arthroplasty"               = 9,
       "Not relevant"                        = 88,
       "Not known"                           = 99
+    ),
+    eq5dmob = c(
+      "No problems"                         = 1,
+      "Slight problems"                     = 2,
+      "Moderate problems"                   = 3,
+      "Severe problems"                     = 4,
+      "Unable to"                           = 5
+    ),
+    eq5dcare = c(
+      "No problems"                         = 1,
+      "Slight problems"                     = 2,
+      "Moderate problems"                   = 3,
+      "Severe problems"                     = 4,
+      "Unable to"                           = 5
+    ),
+    eq5dact = c(
+      "No problems"                         = 1,
+      "Slight problems"                     = 2,
+      "Moderate problems"                   = 3,
+      "Severe problems"                     = 4,
+      "Unable to"                           = 5
+    ),
+    eq5dpain = c(
+      "No pain"                             = 1,
+      "Slight pain"                         = 2,
+      "Moderate pain"                       = 3,
+      "Severe pain"                         = 4,
+      "Exteme pain"                         = 5
+    ),
+    eq5dnx = c(
+      "Not anxious"                         = 1,
+      "Slightly anxious"                    = 2,
+      "Moderately anxious"                  = 3,
+      "Severely anxious"                    = 4,
+      "Extemely anxious"                    = 5
     )
   )
 

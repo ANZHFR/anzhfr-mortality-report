@@ -31,7 +31,7 @@ tar_source("R/etl_functions.R")
 tar_source("R/mod_functions.R")
 
 # 3. Define Global Parameters --------------------------------------------------
-# File Paths
+# Define Data Lake Paths
 csv_datalake <- "/Volumes/fipg/2. ANZHFR projects/10. Jason/anzhfr_mortality_report/Data/csv_datalake/"
 
 # Report Settings
@@ -47,11 +47,22 @@ form_mort365d <- update(base_form, mort365d ~ .)
 
 ## Data ETL Targets ------------------------------------------------------------
 list_etl <- tar_plan(
+  # Detect file changes
+  tar_target(
+    name = datalake_path,
+    command = csv_datalake,
+    format = "file"
+  ),
+
   # Identify latest file
   tar_target(
-    latest_data_path,
-    paste0(csv_datalake, list.files(csv_datalake, pattern = ".csv") %>%
-      keep(str_detect(., max(str_sub(., 1, 6)))))
+    latest_data,
+    tibble(files = list.files(datalake_path, pattern = "\\.csv$", full.names = T)) |>
+      mutate(filename = basename(files)) |>
+      mutate(date_str = str_extract(filename, "^\\d{6}")) |>
+      mutate(file_date = ymd(date_str)) |>
+      filter(file_date == max(file_date, na.rm = T)) |>
+      pull(files)
   ),
 
   # Load Hospital Codes
@@ -61,7 +72,7 @@ list_etl <- tar_plan(
   # Load & Clean Clinical Data
   tar_target(
     raw_data,
-    get_anzhfr_data(latest_data_path, config_coltype) |>
+    get_anzhfr_data(latest_data, config_coltype) |>
       anzhfr_var_labels() |>
       anzhfr_value_labels()
   ),
