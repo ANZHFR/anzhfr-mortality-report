@@ -825,8 +825,8 @@ pt_journey <- function(data) {
           "discharge_from_hospital",
           "follow_up1",
           "follow_up2",
-          "discharge_from_system",
-          "discharge_from_system",
+          "discharge_from_system1",
+          "discharge_from_system2",
           "death"
         )
       )
