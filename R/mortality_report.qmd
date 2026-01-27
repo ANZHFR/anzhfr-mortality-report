@@ -58,7 +58,7 @@ start_3yr <- latest_report_year - 2
 get_plot_target <- function(base_name, outcome, year, country) {
   target_name <- paste(base_name, outcome, year, country, sep = "_")
   # Use tar_read to read a target using a string name
-  tar_read_raw(target_name)
+  tar_read(target_name)
 }
 
 # Pre-calculate counts for text

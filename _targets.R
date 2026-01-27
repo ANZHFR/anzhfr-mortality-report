@@ -79,11 +79,9 @@ list_etl <- tar_plan(
   tar_target(
     tidy_data,
     raw_data |>
-      deduplicate_data() |>
+      deduplicate() |>
       clean_datetime() |>
-      clean_data() |>
-      transform_data() |>
-      left_join(hoscode_data |> select(ahoscode, h_name), by = join_by(ahos_code == ahoscode))
+      clean_data()
   ),
 
   # Patient Journey & Linkage
@@ -97,6 +95,8 @@ list_imputation <- tar_plan(
   tar_target(
     analysis_data,
     tidy_data_tedis |>
+      transform_data() |>
+      left_join(hoscode_data |> select(ahoscode, h_name), by = join_by(ahos_code == ahoscode)) |>
       filter(!str_detect(ds, "NoMatch")) |>
       filter(surg_yn == "Surgical") |>
       filter(report_year %in% 2016:(max(reportable_years) - 1))

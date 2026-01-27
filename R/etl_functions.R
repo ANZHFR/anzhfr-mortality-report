@@ -129,9 +129,9 @@ get_anzhfr_data <- function(latest_data, config_coltype) {
     distance = apply(string_distance, 1, min)
   ) |>
     # Safety threshold if the words are too different
-    mutate(safety_threshod = ifelse(distance < 2, T, F)) |>
-    mutate(modifed_names = ifelse(safety_threshod == F, tolower(rawname), matchname)) |>
-    mutate(matchname_index = ifelse(safety_threshod == F, NA, matchname_index))
+    mutate(safety_threshod = if_else(distance < 2, T, F)) |>
+    mutate(modifed_names = if_else(safety_threshod == F, tolower(rawname), matchname)) |>
+    mutate(matchname_index = if_else(safety_threshod == F, NA, matchname_index))
 
   # import into memory
   imported_data <-
@@ -147,7 +147,15 @@ get_anzhfr_data <- function(latest_data, config_coltype) {
     ) |>
     bind_rows() |>
     mutate(country = if_else(str_detect(ds, "_NZ_"), "nz", "au")) |>
-    mutate(id = paste0(country, str_pad(id, width = 6, side = "left", pad = "0")))
+    mutate(id = paste0(country, str_pad(id, width = 6, side = "left", pad = "0"))) |>
+    # correct NZ hospital codes to make them unique identifiers.
+    mutate(
+      ahos_code = if_else(
+        country == "nz",
+        stringr::str_replace(ahos_code, "AU", "NZ"),
+        ahos_code
+      )
+    )
 
   return(imported_data)
 }
@@ -160,6 +168,7 @@ anzhfr_var_labels <- function(data) {
   # Variable labels
   config_varlabs <- list(
     start_date          = "Start Date",
+    start_time          = "Start Time",
     hosp_report_id      = "Hospital ID for Reporting",
     id                  = "Record Unique Identifier",
     area                = "Australian and New Zealand Jurisdiction",
@@ -174,9 +183,17 @@ anzhfr_var_labels <- function(data) {
     e_dadmit            = "ED Admission of Operating Hospital",
     athoscode           = "Identifier of Transfer Hospital",
     tarrdatetime        = "Transfer Hospital Arrival DateTime",
+    tarrdate            = "Transfer Hospital Arrival Date",
+    tarrtime            = "Transfer Hospital Arrival Time",
     arrdatetime         = "Operating Hospital Arrival DateTime",
+    arrdate             = "Operating Hospital Arrival Date",
+    arrtime             = "Operating Hospital Arrival Time",
     depdatetime         = "Operating Hospital Departure DateTime",
+    depdate             = "Operating Hospital Departure Date",
+    deptime             = "Operating Hospital Departure Time",
     admdatetimeop       = "In-patient Fracture DateTime",
+    admdateop           = "In-patient Fracture Date",
+    admtimeop           = "In-patient Fracture Date",
     painassess          = "Pain Assessment",
     painmanage          = "Pain Management",
     ward                = "Ward Type",
@@ -195,6 +212,8 @@ anzhfr_var_labels <- function(data) {
     frailty             = "Clinical Frailty Scale",
     addelassess         = "Delirium Assessment Prior To Surgery",
     sdatetime           = "Hip Fracture Surgery DateTime",
+    sdate               = "Hip Fracture Surgery Date",
+    stime               = "Hip Fracture Surgery Time",
     delay               = "Surgery Delay",
     anaesth             = "Type of Anaesthesia",
     analges             = "Analgesia - Nerve Block",
@@ -756,26 +775,35 @@ anzhfr_value_labels <- function(data) {
 #' @param data A dataframe with datetime in wide format
 #' @return A dataframe with events and dates in long format
 pt_journey <- function(data) {
-  journey_data <- data |>
-    select(id, where(is.POSIXct), where(is.Date), e_dadmit, h_name, -predod) |>
+  long_date <- data |>
+    select(id, where(is.Date), side, e_dadmit, ahos_code, -predod) |>
     pivot_longer(
-      cols = where(is.POSIXct) | where(is.Date),
+      cols = where(is.Date),
       names_to = "event",
-      values_to = "datetime"
+      values_to = "date"
+    )
+
+  long_time <- data |>
+    select(id, where(hms::is_hms), side) |>
+    pivot_longer(
+      cols = where(hms::is_hms),
+      names_to = "event",
+      values_to = "time"
     ) |>
-    mutate(
-      datetime = na_if(datetime, as.POSIXlt("1900-01-01 00:00:00", tz = "UTC"))
-    ) |>
+    mutate(event = str_replace(event, "time", "date"))
+
+
+  journey_data <- left_join(long_date, long_time, by = c("id", "event", "side")) |>
     mutate(
       event = factor(
         event,
         levels = c(
           "start_date",
-          "tarrdatetime",
-          "arrdatetime",
-          "depdatetime",
-          "admdatetimeop",
-          "sdatetime",
+          "tarrdate",
+          "arrdate",
+          "depdate",
+          "admdateop",
+          "sdate",
           "gdate",
           "wdisch",
           "hdisch",
@@ -803,8 +831,8 @@ pt_journey <- function(data) {
         )
       )
     ) |>
-    filter(!is.na(datetime)) |>
-    arrange(id, datetime, event)
+    filter(!is.na(date) | !is.na(time)) |>
+    arrange(id, date, time)
 
   return(journey_data)
 }
@@ -841,16 +869,16 @@ get_tedis <- function(data) {
       )
     ) |>
     # as we only concern about dates in mortality calculation
-    arrange(id, date(datetime), event) |>
+    arrange(id, date, event) |>
     group_by(id) |>
-    mutate(report_year = if_else(event == "start_date", year(datetime), NA)) |>
+    mutate(report_year = if_else(event == "start_date", year(date), NA)) |>
     fill(report_year, .direction = "downup") |>
     # keep start_date only when it's the only record
     filter(!(n() > 1 & event == "start_date")) |>
     mutate(event_index = row_number() - 1) |>
-    mutate(lag_datetime = lag(datetime)) |>
+    mutate(lag_date = lag(date)) |>
     ungroup() |>
-    mutate(duration = as.duration(interval(lag_datetime, datetime)))
+    mutate(duration = as.duration(interval(lag_date, date)))
 
   event_wide <- tmp_dat |>
     select(id, report_year, event_index, event) |>
@@ -915,10 +943,10 @@ get_tedis <- function(data) {
     ) |>
     # get corresponding hip fracture diagnosis event as the diagnosis date
     left_join(
-      tmp_dat |> select(id, event, datetime),
+      tmp_dat |> select(id, event, date),
       by = c("id" = "id", "dx_event" = "event")
     ) |>
-    mutate(dx_date = date(datetime))
+    mutate(dx_date = date)
 
   return(admit_dat)
 }
@@ -1012,77 +1040,86 @@ label_hoscode <- function(data, hoscode_dat) {
 #'
 #' @param data Raw ANZHFR data
 #' @return Deduplicated dataset
-deduplicate_data <- function(data) {
-  data <- data |> mutate(n_miss = rowSums(is_regular_na(data)))
-
-  # all duplicate ids (incl. different sides)
-  dup_ids <- data |>
-    group_by(id) |>
-    tally() |>
-    filter(n > 1) |>
-    pull(id)
-
-  # duplicate ids (on same side)
-  dup_ids_ss <- data |>
-    group_by(id, side) |>
-    tally() |>
-    filter(n > 1) |>
-    pull(id)
-
+deduplicate <- function(data) {
   dat_dd <- data |>
-    # correct NZ hospital codes to make them unique identifiers.
-    mutate(
-      ahos_code = if_else(
-        country == "nz",
-        stringr::str_replace(ahos_code, "AU", "NZ"),
-        ahos_code
-      )
-    ) |>
+    # for duplicate ids that record same side, check if it is due to start date typo, if so, keep the record with least missing values.
+    mutate(n_miss = rowSums(is_regular_na(data))) |>
+    group_by(id) |>
+    mutate(distance = adist(start_date[1], start_date[2])) |>
+    filter(n_miss == min(n_miss, na.rm = TRUE) & (distance <= 1 | is.na(distance))) |> # allow for one typo character
+    ungroup() |>
+    # for duplicate ids that record same side not due to start date typo, assume the first record's side is correct, change the second record to contralateral side.
     # for duplicate ids that record different sides, add "sequence number" at the end of id
     group_by(id) |>
     arrange(start_date) |>
-    mutate(
-      id = if_else(
-        (id %in% dup_ids) & !(id %in% dup_ids_ss),
-        paste0(id, "_", row_number()),
-        id
-      )
-    ) |>
+    mutate(side = if_else(row_number() > 1, 3 - lag(side), side)) |>
+    mutate(id = if_else(n() > 1, paste0(id, "_", row_number()), id)) |>
     ungroup() |>
-    # for duplicate ids that record same side, keep the record with least missing values.
-    group_by(id) |>
-    filter(n_miss == min(n_miss, na.rm = TRUE)) |>
-    ungroup() |>
-    select(-n_miss)
+    # remove intermediate variables
+    select(-n_miss, -distance)
 
   return(dat_dd)
 }
 
 #' Clean up invalid datetime and typos
 #'
-#' @param data A R dataframe (duplicated raw data)
+#' @param data A R dataframe
 #' @return A R dataframe
 clean_datetime <- function(data) {
-  # New date cleaning process
+  # Acute care dates cleaning process
   newdata <- data |>
+    # rename start_date to start_datetime to keep consistent naming
+    rename(start_datetime = start_date) |>
+    # extract date from datetime
     mutate(
       across(
-        where(is.POSIXct) | where(is.Date),
+        where(is.POSIXct),
+        date,
+        .names = "{.col}_tmp"
+      )
+    ) |>
+    rename_with(.cols = where(is.Date), ~ str_remove(str_remove(.x, "time"), "_tmp")) |>
+    # extract time from datetime
+    mutate(
+      across(
+        where(is.POSIXct),
+        hms::as_hms,
+        .names = "{.col}_tmp"
+      )
+    ) |>
+    rename_with(.cols = where(hms::is_hms), ~ str_remove(str_remove(.x, "date"), "_tmp")) |>
+    # Change incorrect dates and times to NA
+    mutate(
+      across(
+        where(is.Date),
         ~ na_if(.x, ymd("1900-01-01"))
       )
     ) |>
+    mutate(
+      across(
+        where(hms::is_hms),
+        ~ na_if(.x, hms::as_hms("00:00:00"))
+      )
+    ) |>
+    mutate(
+      across(
+        where(hms::is_hms),
+        ~ na_if(.x, hms::as_hms("00:00:01"))
+      )
+    ) |>
+    # Auto-correct potential typo based on an acute care anchor date (currently median)
+
     rowwise() |>
     mutate(
       median_date = median(
         c(
-          date(tarrdatetime),
-          date(arrdatetime),
-          date(depdatetime),
-          date(admdatetimeop),
-          date(sdatetime),
+          tarrdate,
+          arrdate,
+          depdate,
+          admdateop,
+          sdate,
           gdate,
-          wdisch,
-          hdisch
+          wdisch
         ),
         na.rm = TRUE
       )
@@ -1093,23 +1130,25 @@ clean_datetime <- function(data) {
     mutate(
       across(
         c(
-          tarrdatetime,
-          arrdatetime,
-          depdatetime,
-          admdatetimeop,
-          sdatetime,
+          tarrdate,
+          arrdate,
+          depdate,
+          admdateop,
+          sdate,
           gdate,
-          wdisch,
-          hdisch
+          wdisch
         ),
         ~ if_else(
           .x %within% interval(median_date %m-% months(3), median_date %m+% months(3)),
           .x,
-          update(.x, year = year(median_date))
+          if_else(update(.x, year = year(median_date)) %within% interval(median_date %m-% months(3), median_date %m+% months(3)),
+            update(.x, year = year(median_date)),
+            .x
+          )
         )
       )
     ) |>
-    select(-median_date)
+    select(-median_date, -where(is.POSIXct))
 
   return(newdata)
 }
@@ -1117,15 +1156,15 @@ clean_datetime <- function(data) {
 
 #' Clean up data errors and missing values
 #'
-#' @param raw_data A R dataframe (duplicated raw data)
+#' @param raw_data A R dataframe
 #' @return A R dataframe
 clean_data <- function(raw_data) {
-  dat_clean <- raw_data |>
+  new_data <- raw_data |>
     mutate(report_year = year(start_date)) |>
     # confirm surgical indicator
     ## confirm surgical repair from other variables
     mutate(
-      surg = if_else((!is.na(sdatetime) | !is.na(optype)), 2, surg)
+      surg = if_else((!is.na(sdate) | !is.na(optype)), 2, surg)
     ) |>
     mutate(
       surg = case_when(
@@ -1133,9 +1172,13 @@ clean_data <- function(raw_data) {
         year(start_date) < 2021 ~ 1,
         TRUE ~ 5
       )
-    )
+    ) |>
+    # Carry forward missing hospital discharge date from ward discharge date
+    # if ward discharge to private home, RACF or died
+    mutate(hdisch = if_else(wdest %in% c(1, 2, 6) & is.na(hdisch), wdisch, hdisch)) |>
+    select(-ds)
 
-  return(dat_clean)
+  return(new_data)
 }
 
 #' Create analysis variables that match NHFR classification

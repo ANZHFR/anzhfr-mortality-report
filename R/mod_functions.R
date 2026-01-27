@@ -694,7 +694,7 @@ remove_geom <- function(ggplot2_object, geom_type) {
 replace_funnel_hname <- function(ggplot2_object, hoscode_data) {
   tmp_dat <- ggplot2_object$data |>
     left_join(hoscode_data, by = "h_name") |>
-    mutate(report_id = ifelse(text == "", "", report_id))
+    mutate(report_id = if_else(text == "", "", report_id))
 
   ggplot2_object$data <- tmp_dat
 
