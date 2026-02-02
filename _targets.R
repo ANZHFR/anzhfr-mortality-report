@@ -29,6 +29,7 @@ tar_option_set(
 # 2. Source Custom Functions ---------------------------------------------------
 tar_source("R/etl_functions.R")
 tar_source("R/mod_functions.R")
+tar_source("R/tedis_review.R")
 
 # 3. Define Global Parameters --------------------------------------------------
 # Define Data Lake Paths
@@ -80,6 +81,7 @@ list_etl <- tar_plan(
     tidy_data,
     raw_data |>
       deduplicate() |>
+      tedis_review() |>
       clean_datetime() |>
       clean_data()
   ),

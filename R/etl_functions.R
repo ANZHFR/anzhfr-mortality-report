@@ -943,10 +943,11 @@ get_tedis <- function(data) {
     ) |>
     # get corresponding hip fracture diagnosis event as the diagnosis date
     left_join(
-      tmp_dat |> select(id, event, date),
+      tmp_dat |> select(id, event, date, time),
       by = c("id" = "id", "dx_event" = "event")
     ) |>
-    mutate(dx_date = date)
+    mutate(dx_date = date) |>
+    mutate(dx_time = time)
 
   return(admit_dat)
 }
@@ -960,7 +961,7 @@ get_tedis <- function(data) {
 get_mortality <- function(clean_data, tedis_info) {
   clean_data_with_mort <- left_join(
     clean_data,
-    tedis_info |> select(id, admittype, valid_tedis, dx_date),
+    tedis_info |> select(id, admittype, valid_tedis, dx_date, dx_time),
     by = "id"
   ) |>
     mutate(
@@ -1107,6 +1108,12 @@ clean_datetime <- function(data) {
         ~ na_if(.x, hms::as_hms("00:00:01"))
       )
     ) |>
+    mutate(
+      across(
+        contains("fdate"),
+        ~ if_else(.x < ymd("2016-01-01"), NA, .x)
+      )
+    ) |>
     # Auto-correct potential typo based on an acute care anchor date (currently median)
 
     rowwise() |>
@@ -1148,7 +1155,32 @@ clean_datetime <- function(data) {
         )
       )
     ) |>
-    select(-median_date, -where(is.POSIXct))
+    # Ward discharge and hospital discharge dates cannot be earlier than the earliest acute care date
+    rowwise() |>
+    mutate(
+      min_date = min(
+        c(
+          tarrdate,
+          arrdate,
+          depdate,
+          admdateop,
+          sdate,
+          gdate
+        ),
+        na.rm = TRUE
+      )
+    ) |>
+    ungroup() |>
+    mutate(wdisch = if_else(wdisch < min_date, NA, wdisch)) |>
+    mutate(hdisch = if_else(hdisch < min_date, NA, hdisch)) |>
+    # Carry forward missing hospital discharge date from ward discharge date
+    # if ward discharge to private home, RACF or died
+    mutate(hdisch = if_else(wdest %in% c(1, 2, 6) & is.na(hdisch), wdisch, hdisch)) |>
+    # Correct hospital discharge date with ward discharge date
+    # if ward discharge to private home, RACF or died
+    mutate(hdisch = if_else(wdest %in% c(1, 2, 6) & (wdisch > hdisch), wdisch, hdisch)) |>
+    select(-median_date, -min_date, -where(is.POSIXct))
+
 
   return(newdata)
 }
@@ -1173,10 +1205,21 @@ clean_data <- function(raw_data) {
         TRUE ~ 5
       )
     ) |>
-    # Carry forward missing hospital discharge date from ward discharge date
-    # if ward discharge to private home, RACF or died
-    mutate(hdisch = if_else(wdest %in% c(1, 2, 6) & is.na(hdisch), wdisch, hdisch)) |>
-    select(-ds)
+    # `malnutrition` was introduced on 01-Jan-2019
+    mutate(malnutrition = if_else(year(start_date) < 2019, NA, malnutrition)) |>
+    # `painassess` was introduced on 01-Jan-2017
+    mutate(painassess = if_else(year(start_date) < 2017, NA, painassess)) |>
+    # `painmanage` was introduced on 01-Jan-2017
+    mutate(painmanage = if_else(year(start_date) < 2017, NA, painmanage)) |>
+    # `cogassess` was introduced on 01-Jan-2017
+    mutate(cogassess = if_else(year(start_date) < 2017, NA, cogassess)) |>
+    # `delassess` was introduced on 01-Jan-2018
+    mutate(delassess = if_else(year(start_date) < 2018, NA, delassess)) |>
+    # `mobil2` (first day walking) was introduced on 01-Jan-2020
+    mutate(mobil2 = if_else(year(start_date) < 2020, NA, mobil2)) |>
+    # `frailty` was introduced on 01-Jan-2020
+    mutate(frailty = if_else(year(start_date) < 2021, NA, frailty))
+
 
   return(new_data)
 }
