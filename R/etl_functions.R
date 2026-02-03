@@ -1224,6 +1224,25 @@ clean_data <- function(raw_data) {
   return(new_data)
 }
 
+#' Clean up reason for surgery delay
+#'
+#' @param data A R dataframe (data with cleaned datetime and TEDIS info)
+#' @return A R dataframe of records with cleaned-up reason for surgery delay
+clean_delay <- function(data) {
+  clean_data <-
+    data |>
+    mutate(tts = as.duration(as.interval((ymd(dx_date) + hms(dx_time)), (ymd(sdate) + hms(stime))))) |>
+    mutate(delay_yn = if_else(year(start_date) < 2024, tts > hours(48), tts > hours(36))) |>
+    mutate(delay = case_when(
+      delay_yn == FALSE ~ 1,
+      delay_yn == TRUE & delay == 1 ~ NA,
+      .default = delay
+    ))
+
+  return(clean_data)
+}
+
+
 #' Create analysis variables that match NHFR classification
 #'
 #' @param raw_data A R dataframe (clean data)

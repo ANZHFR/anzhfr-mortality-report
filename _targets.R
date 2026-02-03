@@ -89,7 +89,11 @@ list_etl <- tar_plan(
   # Patient Journey & Linkage
   tar_target(patient_journey, pt_journey(tidy_data)),
   tar_target(tedis_info, get_tedis(patient_journey)),
-  tar_target(tidy_data_tedis, get_mortality(tidy_data, tedis_info))
+  tar_target(
+    tidy_data_tedis,
+    get_mortality(tidy_data, tedis_info) |>
+      clean_delay()
+  )
 )
 
 ## Imputation Targets ----------------------------------------------------------
