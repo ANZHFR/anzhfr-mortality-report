@@ -1041,26 +1041,105 @@ label_hoscode <- function(data, hoscode_dat) {
 #'
 #' @param data Raw ANZHFR data
 #' @return Deduplicated dataset
-deduplicate <- function(data) {
-  dat_dd <- data |>
-    # for duplicate ids that record same side, check if it is due to start date typo, if so, keep the record with least missing values.
-    mutate(n_miss = rowSums(is_regular_na(data))) |>
+deduplicate <- function(raw_data) {
+  # Identify and separate duplicates for subsequent processes
+  dup_data <- raw_data |>
     group_by(id) |>
-    mutate(distance = adist(start_date[1], start_date[2])) |>
-    filter(n_miss == min(n_miss, na.rm = TRUE) & (distance <= 1 | is.na(distance))) |> # allow for one typo character
-    ungroup() |>
-    # for duplicate ids that record same side not due to start date typo, assume the first record's side is correct, change the second record to contralateral side.
-    # for duplicate ids that record different sides, add "sequence number" at the end of id
+    mutate(n = n()) |>
+    filter(n > 1) |>
+    ungroup()
+
+
+  print("Max number of duplicates:")
+  print(max(dup_data$n))
+
+  # The following can only handle number of duplicates == 2
+
+  tmpdat <- dup_data |>
+    mutate(n_miss = rowSums(is.na(dup_data))) |>
     group_by(id) |>
     arrange(start_date) |>
-    mutate(side = if_else(row_number() > 1, 3 - lag(side), side)) |>
-    mutate(id = if_else(n() > 1, paste0(id, "_", row_number()), id)) |>
-    ungroup() |>
-    # remove intermediate variables
-    select(-n_miss, -distance)
+    mutate(distance = adist(start_date[1], start_date[2])) |> # number of typo in start_date
+    mutate(same_side = (sum(side) / 2) %% 1 == 0) |> # same fracture side?
+    mutate(same_sex = (sum(sex) / 2) %% 1 == 0) |> # same sex?
+    mutate(age_diff = age[2] - age[1]) |> # age difference?
+    mutate(year_diff = year(start_date[2]) - year(start_date[1])) |> # date difference in years?
+    mutate(date_diff = interval(start_date[1], start_date[2]) %/% days(1)) |> # date difference in days?
+    mutate(age_year_same = age_diff == year_diff) |> # age difference == date difference in years?
+    ungroup()
 
-  return(dat_dd)
+
+  # IDs required special ruling (need to confirm with data manager)
+  special_ids <- c("nz035092")
+
+  # Scenario 1 - same sex, start_date and age match in year and same fracture side, 1 typo in start_date
+  # (i.e., true duplicates due to typo)
+  tmpdat1 <- tmpdat |>
+    filter(age_year_same == TRUE & same_sex == TRUE & same_side == TRUE & distance == 1 & !(id %in% special_ids)) |>
+    group_by(id) |>
+    arrange(start_date) |>
+    fill(everything(), .direction = "updown") |> # fill up missing values using latest record as reference
+    filter(row_number() == n()) |> # select the latest record
+    ungroup()
+
+
+  # Scenario 2 - same sex, start_date and age match in year and same fracture side, with start_date difference < 30 days
+  # (i.e., same person with same records that are likely overwritten)
+  tmpdat2 <- tmpdat |>
+    filter(age_year_same == TRUE & same_sex == TRUE & same_side == TRUE & date_diff < 30 & !(id %in% special_ids)) |>
+    group_by(id) |>
+    arrange(start_date) |>
+    fill(everything(), .direction = "updown") |> # fill up missing values using latest record as reference
+    filter(row_number() == n()) |> # select the latest record
+    ungroup()
+
+  # Scenario 3 - same sex, start_date and age match in year, but not included in scenario 1 & 2
+  # (i.e., same person with different records of likely contralateral fractures)
+  tmpdat3 <-
+    tmpdat |>
+    filter(age_year_same == TRUE & same_sex == TRUE & !(id %in% c(tmpdat1$id, tmpdat2$id)) & !(id %in% special_ids)) |>
+    group_by(id) |>
+    arrange(start_date) |>
+    mutate(side = if_else(row_number() > 1, 3 - lag(side), side)) |> # change the second record's fracture side based on first record
+    mutate(id = paste0(id, "_", row_number())) |>
+    ungroup()
+
+
+  # Scenario 4 - different sex or different start_date and age in year
+  # (i.e., different person)
+
+  tmpdat4 <- tmpdat |>
+    filter((age_year_same == FALSE | same_sex == FALSE) & !(id %in% special_ids)) |>
+    group_by(id) |>
+    mutate(id = paste0(id, letters[row_number()])) |>
+    ungroup()
+
+  # Scenario 5 - special ruling when the above don't apply
+
+  tmpdat5 <- tmpdat |>
+    filter(id %in% special_ids) |>
+    group_by(id) |>
+    mutate(id = paste0(id, letters[row_number()])) |>
+    ungroup()
+
+
+  # Combine all tmpdats
+  dup_data_edit <-
+    bind_rows(tmpdat1, tmpdat2, tmpdat3, tmpdat4, tmpdat5) |>
+    select(colnames(raw_data))
+
+  print("The following IDs have not been proccessed:")
+  print(dup_data$id[!(dup_data$id %in% str_sub(dup_data_edit$id, 1, 8))])
+
+  # Merge back to original data
+  dedup_data <- raw_data |>
+    filter(!(id %in% dup_data$id)) |>
+    bind_rows(dup_data_edit)
+
+
+  return(dedup_data)
 }
+
 
 #' Clean up invalid datetime and typos
 #'
@@ -1132,7 +1211,7 @@ clean_datetime <- function(data) {
       )
     ) |>
     ungroup() |>
-    filter(!is.na(median_date)) |>
+    filter(!is.na(median_date)) |> # records where median date for acute care cannot be calculated are removed (not useful for reporting)
     # Auto-correct date typo
     mutate(
       across(
@@ -1155,7 +1234,7 @@ clean_datetime <- function(data) {
         )
       )
     ) |>
-    # Ward discharge and hospital discharge dates cannot be earlier than the earliest acute care date
+    # Based on TEDIS dates (after review) to decide validity of other datetime variables
     rowwise() |>
     mutate(
       min_date = min(
@@ -1164,22 +1243,34 @@ clean_datetime <- function(data) {
           arrdate,
           depdate,
           admdateop,
-          sdate,
-          gdate
+          sdate
+        ),
+        na.rm = TRUE
+      )
+    ) |>
+    mutate(
+      max_date = max(
+        c(
+          tarrdate,
+          arrdate,
+          depdate,
+          admdateop,
+          sdate
         ),
         na.rm = TRUE
       )
     ) |>
     ungroup() |>
-    mutate(wdisch = if_else(wdisch < min_date, NA, wdisch)) |>
-    mutate(hdisch = if_else(hdisch < min_date, NA, hdisch)) |>
+    # Ward/hospital discharge and follow-up dates cannot occur before acute care ends
+    mutate(across(c(wdisch, hdisch, fdate1, fdate2, date30, date120), ~ if_else(.x < max_date, NA, .x))) |>
+    # mutate(hdisch = if_else(hdisch < max_date, NA, hdisch)) |>
     # Carry forward missing hospital discharge date from ward discharge date
     # if ward discharge to private home, RACF or died
-    mutate(hdisch = if_else(wdest %in% c(1, 2, 6) & is.na(hdisch), wdisch, hdisch)) |>
+    mutate(hdisch = if_else(wdest %in% c(1, 2, 6, 7) & is.na(hdisch), wdisch, hdisch)) |>
     # Correct hospital discharge date with ward discharge date
     # if ward discharge to private home, RACF or died
-    mutate(hdisch = if_else(wdest %in% c(1, 2, 6) & (wdisch > hdisch), wdisch, hdisch)) |>
-    select(-median_date, -min_date, -where(is.POSIXct))
+    mutate(hdisch = if_else(wdest %in% c(1, 2, 6, 7) & (wdisch <= hdisch), wdisch, hdisch)) |>
+    select(-median_date, -min_date, -max_date, -where(is.POSIXct))
 
 
   return(newdata)
