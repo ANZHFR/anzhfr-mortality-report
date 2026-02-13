@@ -167,8 +167,12 @@ get_anzhfr_data <- function(latest_data, config_coltype) {
 anzhfr_var_labels <- function(data) {
   # Variable labels
   config_varlabs <- list(
+    start_datetime      = "Start DateTime",
     start_date          = "Start Date",
     start_time          = "Start Time",
+    dx_datetime         = "Episode Start DateTime",
+    dx_date             = "Episode Start Date",
+    dx_time             = "Episode Start Time",
     hosp_report_id      = "Hospital ID for Reporting",
     id                  = "Record Unique Identifier",
     area                = "Australian and New Zealand Jurisdiction",
@@ -257,7 +261,7 @@ anzhfr_var_labels <- function(data) {
     findod              = "Final Date of Death",
     eq5dmob             = "EQ-5D-5L Mobility",
     eq5dcare            = "EQ-5D-5L Self Care",
-    eq5dact             = "EQ-5D-5L Usual Activities",
+    eq5d_usualactivity  = "EQ-5D-5L Usual Activities",
     eq5dpain            = "EQ-5D-5L Pain/Discomfort",
     eq5danx             = "EQ-5D-5L Anxiety/Depression",
     eq5dhealth          = "EQ-5D-5L Health Status"
@@ -276,6 +280,18 @@ anzhfr_var_labels <- function(data) {
 anzhfr_value_labels <- function(data) {
   ## Value labels ----
   config_valuelabs <- list(
+    # area = c(
+    #   "New South Wales" = 1,
+    #   "Victoria" = 2,
+    #   "Queensland" = 3,
+    #   "South Australia" = 4,
+    #   "Western Australia" = 5,
+    #   "Tasmania" = 6,
+    #   "Northern Territory" = 7,
+    #   "Australian Capital Territory" = 8,
+    #   "Other Territories (Cocos Keeling Islands, Christmas Island and Jervis Bay Territory)" = 9,
+    #   "New Zealand" = 10
+    # ),
     sex = c(
       "Male"                              = 1,
       "Female"                            = 2,
@@ -374,10 +390,10 @@ anzhfr_value_labels <- function(data) {
       "Not known"                           = 9
     ),
     cogassess = c(
-      "Not assessed"                      = 1,
-      "Assessed and normal"               = 2,
-      "Assessed and abnormal or impaired" = 3,
-      "Not known"                         = 9
+      "Not assessed"                                          = 1,
+      "Assessed (and normal [from 2018-01-01])"               = 2,
+      "Assessed and abnormal or impaired"                     = 3,
+      "Not known"                                             = 9
     ),
     cogstat = c(
       "Normal cognition"                     = 1,
@@ -459,13 +475,13 @@ anzhfr_value_labels <- function(data) {
       "Not known"                                      = 9
     ),
     anaesth = c(
-      "General anaesthesia"                       = 1,
-      "Spinal anaesthesia"                        = 2,
-      "General and spinal anaesthesia"            = 3,
-      "Spinal / regional anaesthesia"             = 5,
-      "6 General and spinal/regional anaesthesia" = 6,
-      "Other"                                     = 97,
-      "Not known"                                 = 99
+      "General anaesthesia" = 1,
+      "Spinal anaesthesia" = 2,
+      "General and spinal anaesthesia" = 3,
+      "Spinal / regional anaesthesia" = 5,
+      "General and spinal/regional anaesthesia" = 6,
+      "Other" = 97,
+      "Not known" = 99
     ),
     analges = c(
       "Nerve block administered before arriving in OT" = 1,
@@ -547,9 +563,13 @@ anzhfr_value_labels <- function(data) {
       "Not known"        = 9
     ),
     mobil2 = c(
-      "No"        = 0,
-      "Yes"       = 1,
-      "Not known" = 9
+      "No"                                                    = 0,
+      "Yes"                                                   = 1,
+      "No – Stood without stepping/walking"                   = 2,
+      "No – Sat on the edge of the bed"                       = 3,
+      "No – Sat out of bed via hoist"                         = 4,
+      "No – Did not attempt to get out of bed on day one"     = 5,
+      "Not known"                                             = 9
     ),
     ons = c(
       "No"        = 0,
@@ -776,7 +796,7 @@ anzhfr_value_labels <- function(data) {
 #' @return A dataframe with events and dates in long format
 pt_journey <- function(data) {
   long_date <- data |>
-    select(id, where(is.Date), side, e_dadmit, ahos_code, -predod) |>
+    select(id, where(is.Date), side, e_dadmit, ahos_code) |>
     pivot_longer(
       cols = where(is.Date),
       names_to = "event",
@@ -811,6 +831,7 @@ pt_journey <- function(data) {
           "fdate2",
           "date30",
           "date120",
+          "predod",
           "findod"
         ),
         labels = c(
@@ -827,6 +848,7 @@ pt_journey <- function(data) {
           "follow_up2",
           "discharge_from_system1",
           "discharge_from_system2",
+          "preliminary death",
           "death"
         )
       )
@@ -931,6 +953,7 @@ get_tedis <- function(data) {
         str_detect(admittype, "T") ~ "T",
         str_detect(admittype, "E") ~ "E",
         str_detect(admittype, "D") ~ "D",
+        str_detect(admittype, "S") ~ "S",
         .default = NA
       )
     ) |>
@@ -1049,9 +1072,9 @@ deduplicate <- function(raw_data) {
     filter(n > 1) |>
     ungroup()
 
-
   print("Max number of duplicates:")
   print(max(dup_data$n))
+
 
   # The following can only handle number of duplicates == 2
 
@@ -1086,7 +1109,7 @@ deduplicate <- function(raw_data) {
   # Scenario 2 - same sex, start_date and age match in year and same fracture side, with start_date difference < 30 days
   # (i.e., same person with same records that are likely overwritten)
   tmpdat2 <- tmpdat |>
-    filter(age_year_same == TRUE & same_sex == TRUE & same_side == TRUE & date_diff < 30 & !(id %in% special_ids)) |>
+    filter(age_year_same == TRUE & same_sex == TRUE & same_side == TRUE & (date_diff < 30) & !(id %in% special_ids)) |>
     group_by(id) |>
     arrange(start_date) |>
     fill(everything(), .direction = "updown") |> # fill up missing values using latest record as reference
@@ -1139,7 +1162,6 @@ deduplicate <- function(raw_data) {
 
   return(dedup_data)
 }
-
 
 #' Clean up invalid datetime and typos
 #'
@@ -1237,7 +1259,7 @@ clean_datetime <- function(data) {
     # Based on TEDIS dates (after review) to decide validity of other datetime variables
     rowwise() |>
     mutate(
-      min_date = min(
+      max_ac_date = max(
         c(
           tarrdate,
           arrdate,
@@ -1249,20 +1271,16 @@ clean_datetime <- function(data) {
       )
     ) |>
     mutate(
-      max_date = max(
-        c(
-          tarrdate,
-          arrdate,
-          depdate,
-          admdateop,
-          sdate
-        ),
+      min_sd_date = min(
+        c(date30, date120),
         na.rm = TRUE
       )
     ) |>
     ungroup() |>
+    mutate(across(starts_with("max"), ~ if_else(is.infinite(.x), NA, .x))) |>
+    mutate(across(starts_with("min"), ~ if_else(is.infinite(.x), NA, .x))) |>
     # Ward/hospital discharge and follow-up dates cannot occur before acute care ends
-    mutate(across(c(wdisch, hdisch, fdate1, fdate2, date30, date120), ~ if_else(.x < max_date, NA, .x))) |>
+    mutate(across(c(wdisch, hdisch, fdate1, fdate2, date30, date120), ~ if_else(.x < max_ac_date, NA, .x))) |>
     # mutate(hdisch = if_else(hdisch < max_date, NA, hdisch)) |>
     # Carry forward missing hospital discharge date from ward discharge date
     # if ward discharge to private home, RACF or died
@@ -1270,7 +1288,38 @@ clean_datetime <- function(data) {
     # Correct hospital discharge date with ward discharge date
     # if ward discharge to private home, RACF or died
     mutate(hdisch = if_else(wdest %in% c(1, 2, 6, 7) & (wdisch <= hdisch), wdisch, hdisch)) |>
-    select(-median_date, -min_date, -max_date, -where(is.POSIXct))
+    # The following codes addresses when ward d/c was recorded after hospital d/c
+    # If ward d/c and hosp d/c exactly n month apart, Change ward d/c to hosp d/c
+    mutate(wdisch = case_when(
+      (wdisch > hdisch) & (update(wdisch, month = month(hdisch)) == hdisch) ~ hdisch,
+      .default = wdisch
+    )) |>
+    # If ward d/c to death, death is confirmed by predod or findod, use the closest d/c date, otherwise use ward d/c date
+
+    mutate(dod = if_else(!is.na(predod), predod, findod)) |>
+    mutate(wdisch = case_when((wdisch > hdisch) & (wdest == 6) & hdisch == dod ~ hdisch, .default = wdisch)) |>
+    mutate(hdisch = case_when((wdisch > hdisch) & (wdest == 6) & wdisch == dod ~ wdisch, .default = hdisch)) |>
+    mutate(hdisch = case_when((wdisch > hdisch) & (wdest == 6) & !is.na(dod) ~ wdisch, .default = hdisch)) |>
+    select(-dod) |>
+    # If ward d/c within 7 days after hosp d/c and
+    mutate(hdisch = case_when(
+      wdisch > hdisch & wdest %in% c(1, 2, 7) & hdisch - max_ac_date == 0 ~ NA,
+      wdisch > hdisch & wdest %in% c(1, 2, 7) & hdisch - max_ac_date <= 5 & wdisch - hdisch < 7 ~ wdisch,
+      wdisch > hdisch & wdest %in% c(1, 2, 7) & wdisch == min_sd_date ~ wdisch,
+      .default = hdisch
+    )) |>
+    # If hosp d/c to death, remove ward d/c
+    mutate(wdisch = case_when(wdisch > hdisch & wdest %in% c(1, 2, 7) & dresidence == 3 ~ NA, .default = wdisch)) |>
+    # The rest of ward d/c to home/aged care takes the hosp d/c
+    mutate(wdisch = case_when(wdisch > hdisch & wdest %in% c(1, 2, 7) & dresidence != 3 ~ hdisch, .default = wdisch)) |>
+    # If ward d/c to rab/other ward/hosp
+
+    mutate(hdisch = case_when(wdisch > hdisch & wdest %in% c(3, 4, 5, 97) & update(hdisch, month = month(min_sd_date)) == min_sd_date ~ min_sd_date, .default = hdisch)) |>
+    mutate(wdisch = case_when(wdisch > hdisch & wdest %in% c(3, 4, 5, 97) & (hdisch == min_sd_date) ~ NA, .default = wdisch)) |>
+    mutate(hdisch = case_when(wdisch > hdisch & wdest %in% c(3, 4, 5, 97) & hdisch - max_ac_date <= 7 ~ NA, .default = hdisch)) |>
+    mutate(wdisch = case_when(wdisch > hdisch & wdest %in% c(3, 4, 5, 97) & wdisch - max_ac_date > 21 ~ NA, .default = wdisch)) |>
+    mutate(hdisch = case_when(wdisch > hdisch & wdest %in% c(3, 4, 5, 97) & !(hdisch - max_ac_date <= 7) & !(wdisch - max_ac_date > 21) ~ NA, .default = hdisch)) |>
+    select(-starts_with("median"), -starts_with("min"), -starts_with("max"), -where(is.POSIXct))
 
 
   return(newdata)
@@ -1309,8 +1358,9 @@ clean_data <- function(raw_data) {
     # `mobil2` (first day walking) was introduced on 01-Jan-2020
     mutate(mobil2 = if_else(year(start_date) < 2020, NA, mobil2)) |>
     # `frailty` was introduced on 01-Jan-2020
-    mutate(frailty = if_else(year(start_date) < 2021, NA, frailty))
-
+    mutate(frailty = if_else(year(start_date) < 2021, NA, frailty)) |>
+    # `surg` new coding frame was introduced on 01-Jan-2021
+    mutate(surg = if_else(surg %in% 3:5 & year(start_date) < 2021, 1, surg))
 
   return(new_data)
 }
