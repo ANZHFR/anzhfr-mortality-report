@@ -55,6 +55,12 @@ rsconnect/
 # Target object folder
 _targets/
 
-# Folders not shared 
+# Folders not shared
 data/
 report/
+output/
+.posit/
+.vscode
+
+/.quarto/
+**/*.quarto_ipynb

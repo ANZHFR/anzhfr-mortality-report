@@ -14,8 +14,15 @@
 mice_nhfd_pmm <- function(data) {
   # Set multiple imputations parameters
   rand_seed <- 12345
-  mi_form <- ~ age + sex_2l + asa_nhfd + walk_nhfd + ftype_nhfd +
-    uresidence_nhfd + surg_yn + mort30d + afracture
+  mi_form <- ~ age +
+    sex_2l +
+    asa_nhfd +
+    walk_nhfd +
+    ftype_nhfd +
+    uresidence_nhfd +
+    surg_yn +
+    mort30d +
+    afracture
 
   impdat <- data |> select(id, all.vars(mi_form))
 
@@ -27,7 +34,10 @@ mice_nhfd_pmm <- function(data) {
   imp_matrix["age", ] <- 0
   imp_matrix["surg_yn", ] <- 0
   imp_matrix["asa_nhfd", ] <- 0
-  imp_matrix["asa_nhfd", c("surg_yn", "age", "uresidence_nhfd", "walk_nhfd", "mort30d")] <- 1
+  imp_matrix[
+    "asa_nhfd",
+    c("surg_yn", "age", "uresidence_nhfd", "walk_nhfd", "mort30d")
+  ] <- 1
   imp_matrix["mort30d", ] <- 0
 
   imp <- mice::mice(
@@ -143,7 +153,8 @@ summort_by_group <- function(data, set_group, response) {
       logit = mean(logit, na.rm = TRUE),
       n_expect = sum(prob, na.rm = TRUE),
       n_death = sum(!!rlang::sym(response) == "Deceased", na.rm = TRUE),
-      cmort_se = sd(!!rlang::sym(response) == "Deceased", na.rm = TRUE) / sqrt(n),
+      cmort_se = sd(!!rlang::sym(response) == "Deceased", na.rm = TRUE) /
+        sqrt(n),
       logit_se = sqrt(sum(logit_se^2, na.rm = TRUE) / n_cc)
     ) |>
     ungroup() |>
@@ -152,10 +163,16 @@ summort_by_group <- function(data, set_group, response) {
     # Calculate SMR as observed mortality over expected mortality (Byar approx)
     mutate(smr = cmort / amort) |>
     mutate(
-      smr_ll = n_death / n_expect * (1 - 1 / (9 * n_death) - qnorm(0.975) / (3 * sqrt(n_death)))^3
+      smr_ll = n_death /
+        n_expect *
+        (1 - 1 / (9 * n_death) - qnorm(0.975) / (3 * sqrt(n_death)))^3
     ) |>
     mutate(
-      smr_ul = (n_death + 1) / n_expect * (1 - (1 / (9 * (n_death + 1))) + qnorm(0.975) / (3 * sqrt(n_death + 1)))^3
+      smr_ul = (n_death + 1) /
+        n_expect *
+        (1 -
+          (1 / (9 * (n_death + 1))) +
+          qnorm(0.975) / (3 * sqrt(n_death + 1)))^3
     ) |>
     # Calculate CI of crude mortality
     mutate(cmort_ll = cmort - qnorm(0.975) * cmort_se) |>
@@ -176,10 +193,34 @@ summort_by_group <- function(data, set_group, response) {
     ) |>
     # Calculate control limit CIs (Exact binomial)
     mutate(
-      ws_lcl95_exact = Hmisc::binconf(ws_mean * n, n, alpha = 0.05, method = "exact", return.df = TRUE)[[2]],
-      ws_ucl95_exact = Hmisc::binconf(ws_mean * n, n, alpha = 0.05, method = "exact", return.df = TRUE)[[3]],
-      ws_lcl99_exact = Hmisc::binconf(ws_mean * n, n, alpha = 0.003, method = "exact", return.df = TRUE)[[2]],
-      ws_ucl99_exact = Hmisc::binconf(ws_mean * n, n, alpha = 0.003, method = "exact", return.df = TRUE)[[3]]
+      ws_lcl95_exact = Hmisc::binconf(
+        ws_mean * n,
+        n,
+        alpha = 0.05,
+        method = "exact",
+        return.df = TRUE
+      )[[2]],
+      ws_ucl95_exact = Hmisc::binconf(
+        ws_mean * n,
+        n,
+        alpha = 0.05,
+        method = "exact",
+        return.df = TRUE
+      )[[3]],
+      ws_lcl99_exact = Hmisc::binconf(
+        ws_mean * n,
+        n,
+        alpha = 0.003,
+        method = "exact",
+        return.df = TRUE
+      )[[2]],
+      ws_ucl99_exact = Hmisc::binconf(
+        ws_mean * n,
+        n,
+        alpha = 0.003,
+        method = "exact",
+        return.df = TRUE
+      )[[3]]
     ) |>
     # Calculate mortality rate standardized to national population (Byar approx)
     mutate(smort = smr * ws_mean) |>
@@ -199,13 +240,13 @@ summort_by_group <- function(data, set_group, response) {
 #' @return A named list of reportable hospitals in each report year
 get_report_hosp <- function(analysis_data, years) {
   dat_hosp_npa <- analysis_data |>
-    group_by(country, h_name, ahos_code, report_year) |>
+    group_by(country, ahoscode, h_name, report_id, report_year) |>
     tally()
 
   hosp_reportable <- function(year) {
     dat_hosp_npa |>
-      group_by(country, h_name, ahos_code) |>
-      filter((report_year >= year - 3) & (report_year < year)) |>
+      group_by(country, ahoscode, h_name, report_id) |>
+      filter((report_year > year - 3) & (report_year <= year)) |>
       mutate(
         yrs = n(),
         vol = sum(n, na.rm = TRUE)
@@ -235,7 +276,7 @@ fun_funnel_hosp <- function(data, title) {
     mutate(
       text = if_else(
         (smort > ws_ucl95_exact) | (smort < ws_lcl95_exact),
-        h_name,
+        report_id,
         ""
       )
     ) |>
@@ -256,7 +297,10 @@ fun_funnel_hosp <- function(data, title) {
 
   # Set plotting parameters
   axis_x_max <- round(max(plt_dat$n) * 1.1, digits = -2)
-  axis_y_max <- round(max(c(plt_dat$ws_ucl95_exact, plt_dat$smort)) * 1.2, digits = 2)
+  axis_y_max <- round(
+    max(c(plt_dat$ws_ucl95_exact, plt_dat$smort)) * 1.2,
+    digits = 2
+  )
 
   ci_dat <- data.frame(
     n = c(55, axis_x_max),
@@ -272,10 +316,34 @@ fun_funnel_hosp <- function(data, title) {
     ) |>
     # Exact binomial
     mutate(
-      ws_lcl95_exact = Hmisc::binconf(ws_mean * n, n, alpha = 0.05, method = "exact", return.df = TRUE)[[2]],
-      ws_ucl95_exact = Hmisc::binconf(ws_mean * n, n, alpha = 0.05, method = "exact", return.df = TRUE)[[3]],
-      ws_lcl99_exact = Hmisc::binconf(ws_mean * n, n, alpha = 0.003, method = "exact", return.df = TRUE)[[2]],
-      ws_ucl99_exact = Hmisc::binconf(ws_mean * n, n, alpha = 0.003, method = "exact", return.df = TRUE)[[3]]
+      ws_lcl95_exact = Hmisc::binconf(
+        ws_mean * n,
+        n,
+        alpha = 0.05,
+        method = "exact",
+        return.df = TRUE
+      )[[2]],
+      ws_ucl95_exact = Hmisc::binconf(
+        ws_mean * n,
+        n,
+        alpha = 0.05,
+        method = "exact",
+        return.df = TRUE
+      )[[3]],
+      ws_lcl99_exact = Hmisc::binconf(
+        ws_mean * n,
+        n,
+        alpha = 0.003,
+        method = "exact",
+        return.df = TRUE
+      )[[2]],
+      ws_ucl99_exact = Hmisc::binconf(
+        ws_mean * n,
+        n,
+        alpha = 0.003,
+        method = "exact",
+        return.df = TRUE
+      )[[3]]
     ) |>
     bind_rows(data |> select(n, starts_with("ws")))
 
@@ -285,10 +353,34 @@ fun_funnel_hosp <- function(data, title) {
 
     # Reference lines
     geom_hline(aes(yintercept = ws_mean), color = "#003A6E", linewidth = 1) +
-    geom_line(data = ci_dat, aes(x = n, y = ws_lcl95_exact), linetype = "dashed", color = "#434343", linewidth = 0.5) +
-    geom_line(data = ci_dat, aes(x = n, y = ws_ucl95_exact), linetype = "dashed", color = "#434343", linewidth = 0.5) +
-    geom_line(data = ci_dat, aes(x = n, y = ws_lcl99_exact), linetype = "dotted", color = "#434343", linewidth = 0.5) +
-    geom_line(data = ci_dat, aes(x = n, y = ws_ucl99_exact), linetype = "dotted", color = "#434343", linewidth = 0.5) +
+    geom_line(
+      data = ci_dat,
+      aes(x = n, y = ws_lcl95_exact),
+      linetype = "dashed",
+      color = "#434343",
+      linewidth = 0.5
+    ) +
+    geom_line(
+      data = ci_dat,
+      aes(x = n, y = ws_ucl95_exact),
+      linetype = "dashed",
+      color = "#434343",
+      linewidth = 0.5
+    ) +
+    geom_line(
+      data = ci_dat,
+      aes(x = n, y = ws_lcl99_exact),
+      linetype = "dotted",
+      color = "#434343",
+      linewidth = 0.5
+    ) +
+    geom_line(
+      data = ci_dat,
+      aes(x = n, y = ws_ucl99_exact),
+      linetype = "dotted",
+      color = "#434343",
+      linewidth = 0.5
+    ) +
 
     # National average label
     geom_label(
@@ -298,10 +390,14 @@ fun_funnel_hosp <- function(data, title) {
       label.size = 0.3,
       hjust = 1,
       color = "#434343",
-      label = paste("National mortality rate", scales::percent(plt_dat$ws_mean[1], accuracy = 0.1))
+      label = paste(
+        "National mortality rate",
+        scales::percent(plt_dat$ws_mean[1], accuracy = 0.1)
+      )
     ) +
     geom_segment(
-      x = axis_x_max, xend = axis_x_max,
+      x = axis_x_max,
+      xend = axis_x_max,
       y = plt_dat$ws_mean[1] + max(plt_dat$ws_se) * 1.2,
       yend = plt_dat$ws_mean[1],
       colour = "#434343",
@@ -311,7 +407,14 @@ fun_funnel_hosp <- function(data, title) {
 
     # Data points
     geom_point(aes(y = smort, color = group), size = 2, show.legend = TRUE) +
-    geom_text(aes(y = smort, label = text, color = group, vjust = v_just), show.legend = FALSE) +
+    ggrepel::geom_text_repel(
+      aes(y = smort, label = text, color = group),
+      show.legend = FALSE,
+      max.overlaps = Inf,
+      min.segment.length = 0,
+      size = 3.2,
+      seed = 4127
+    ) +
 
     # Aesthetics
     scale_y_continuous(
@@ -358,7 +461,7 @@ fun_funnel_hosp <- function(data, title) {
 fun_smort_ctpl_hosp <- function(data, title) {
   # Plot data
   plt_dat <- data |>
-    mutate(h_name = fct_reorder(h_name, desc(smort))) |>
+    mutate(report_id = fct_reorder(report_id, desc(smort))) |>
     arrange(desc(smort)) |>
     mutate(
       group = case_when(
@@ -375,7 +478,7 @@ fun_smort_ctpl_hosp <- function(data, title) {
 
   # Build plot
   gph_ctpl <- plt_dat |>
-    ggplot(aes(x = h_name, y = smort)) +
+    ggplot(aes(x = report_id, y = smort)) +
     geom_hline(aes(yintercept = ws_mean), color = "#434343", linewidth = 1) +
     geom_errorbar(
       aes(ymin = smort_ll, ymax = smort_ul, color = group),
@@ -391,7 +494,10 @@ fun_smort_ctpl_hosp <- function(data, title) {
       label.size = 0.3,
       hjust = 0,
       color = "#434343",
-      label = paste("National mortality rate", scales::percent(plt_dat$ws_mean[1], accuracy = 0.1))
+      label = paste(
+        "National mortality rate",
+        scales::percent(plt_dat$ws_mean[1], accuracy = 0.1)
+      )
     ) +
     annotate(
       "segment",
@@ -444,7 +550,7 @@ fun_smort_ctpl_hosp <- function(data, title) {
 fun_smr_ctpl_hosp <- function(data, title) {
   plt_dat <- data |>
     arrange(desc(smr)) |>
-    mutate(h_name = fct_reorder(h_name, desc(smr))) |>
+    mutate(report_id = fct_reorder(report_id, desc(smr))) |>
     mutate(
       group = case_when(
         1 > smr_ul ~ "Lower than expected",
@@ -454,7 +560,7 @@ fun_smr_ctpl_hosp <- function(data, title) {
     )
 
   gph_ctpl <- plt_dat |>
-    ggplot(aes(x = h_name, y = smr, colour = group)) +
+    ggplot(aes(x = report_id, y = smr, colour = group)) +
     geom_hline(aes(yintercept = 1), color = "#434343", linewidth = 1) +
     geom_errorbar(aes(ymin = smr_ll, ymax = smr_ul), width = 0, linewidth = 1) +
     geom_point(show.legend = TRUE) +
@@ -497,7 +603,12 @@ fun_smr_ctpl_hosp <- function(data, title) {
 #' @param dat_nz NZ data
 #' @param y_lab Y-axis label
 #' @return List of plots
-fun_annual_trend <- function(dat_au, dat_au_area, dat_nz, y_lab = "Standardised mortality rate") {
+fun_annual_trend <- function(
+  dat_au,
+  dat_au_area,
+  dat_nz,
+  y_lab = "Standardised mortality rate"
+) {
   dat_au <- dat_au |>
     mutate(area = "AU")
 
@@ -506,7 +617,8 @@ fun_annual_trend <- function(dat_au, dat_au_area, dat_nz, y_lab = "Standardised 
     # Only include state that has at least 50 cases in a year.
     filter(n > 50) |>
     # Excluded TAS 2016 due to insufficient reporting number
-    filter(!(area == "TAS" & report_year == 2016))
+    filter(!(area == "TAS" & report_year == 2016)) |>
+    filter(!(area == "ACT" | area == "NT"))
 
   dat_nz <- dat_nz |>
     filter(report_year >= 2017) |>
@@ -516,7 +628,18 @@ fun_annual_trend <- function(dat_au, dat_au_area, dat_nz, y_lab = "Standardised 
     mutate(
       area = factor(
         area,
-        levels = c("AU", "NSW", "QLD", "VIC", "WA", "SA", "TAS", "ACT", "NT", "NZ")
+        levels = c(
+          "AU",
+          "NSW",
+          "QLD",
+          "VIC",
+          "WA",
+          "SA",
+          "TAS",
+          # "ACT",
+          # "NT",
+          "NZ"
+        )
       )
     ) |>
     mutate(area_value = as.numeric(area))
@@ -546,27 +669,41 @@ fun_annual_trend <- function(dat_au, dat_au_area, dat_nz, y_lab = "Standardised 
     ) +
     scale_color_manual(
       values = c(
-        "AU"  = "#0A3A6E",
+        "AU" = "#0A3A6E",
         "NSW" = "#00A7E2",
         "QLD" = "#8E3B24",
         "VIC" = "#ED1C24",
-        "WA"  = "#CDA54D",
-        "SA"  = "#F2C0B8",
+        "WA" = "#CDA54D",
+        "SA" = "#F2C0B8",
         "TAS" = "#71A581",
         "ACT" = "black",
-        "NT"  = "blue"
+        "NT" = "blue"
       )
     ) +
     scale_size_manual(
       values = c(
-        "AU" = 2, "NSW" = 1, "QLD" = 1, "VIC" = 1, "WA" = 1,
-        "SA" = 1, "TAS" = 1, "ACT" = 1, "NT"  = 1
+        "AU" = 2,
+        "NSW" = 1,
+        "QLD" = 1,
+        "VIC" = 1,
+        "WA" = 1,
+        "SA" = 1,
+        "TAS" = 1,
+        "ACT" = 1,
+        "NT" = 1
       )
     ) +
     scale_linewidth_manual(
       values = c(
-        "AU" = 1, "NSW" = 0.5, "QLD" = 0.5, "VIC" = 0.5, "WA" = 0.5,
-        "SA" = 0.5, "TAS" = 0.5, "ACT" = 0.5, "NT" = 0.5
+        "AU" = 1,
+        "NSW" = 0.5,
+        "QLD" = 0.5,
+        "VIC" = 0.5,
+        "WA" = 0.5,
+        "SA" = 0.5,
+        "TAS" = 0.5,
+        "ACT" = 0.5,
+        "NT" = 0.5
       )
     ) +
     labs(x = "Year", y = y_lab) +
@@ -574,7 +711,7 @@ fun_annual_trend <- function(dat_au, dat_au_area, dat_nz, y_lab = "Standardised 
     theme(
       text = element_text(size = 14),
       axis.title.x = element_blank(),
-      axis.title.y = element_text(size = 14),
+      axis.title.y = element_blank(),
       legend.title = element_blank(),
       legend.position.inside = c(0.5, 0.1)
     ) +
@@ -606,6 +743,7 @@ fun_annual_trend <- function(dat_au, dat_au_area, dat_nz, y_lab = "Standardised 
     theme(
       text = element_text(size = 14),
       axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
       legend.title = element_blank()
     )
 
@@ -642,7 +780,9 @@ fun_annual_trend <- function(dat_au, dat_au_area, dat_nz, y_lab = "Standardised 
 
   # Combine plot
   plt_final <- ggpubr::ggarrange(
-    plt_au, plt_nz, plt_tbl,
+    plt_au,
+    plt_nz,
+    plt_tbl,
     ncol = 1,
     heights = c(1, 1, 0.5),
     nrow = 3,
@@ -686,15 +826,15 @@ remove_geom <- function(ggplot2_object, geom_type) {
   return(ggplot2_object)
 }
 
-#' Replace hospital name with report_id in funnel plot
+#' Replace report_id with hospital name in funnel plot
 #'
 #' @param ggplot2_object Funnel plot object
 #' @param hoscode_data Hospital codes data
 #' @return Updated funnel plot
 replace_funnel_hname <- function(ggplot2_object, hoscode_data) {
   tmp_dat <- ggplot2_object$data |>
-    left_join(hoscode_data, by = "h_name") |>
-    mutate(report_id = if_else(text == "", "", report_id))
+    left_join(hoscode_data, by = "report_id") |>
+    mutate(h_name = if_else(text == "", "", h_name))
 
   ggplot2_object$data <- tmp_dat
 
@@ -707,19 +847,19 @@ replace_funnel_hname <- function(ggplot2_object, hoscode_data) {
   return(p)
 }
 
-#' Replace hospital name with report_id in caterpillar plot
+#' Replace report_id with hospital name in caterpillar plot
 #'
 #' @param ggplot2_object Caterpillar plot object
 #' @param hoscode_data Hospital codes data
 #' @return Updated caterpillar plot
 replace_ctpl_hname <- function(ggplot2_object, hoscode_data) {
   labs <- left_join(
-    data.frame(h_name = ggplot2_object$data$h_name),
+    data.frame(report_id = ggplot2_object$data$report_id),
     hoscode_data,
-    by = "h_name"
+    by = "report_id"
   )
 
-  p <- ggplot2_object + scale_x_discrete(labels = labs$report_id)
+  p <- ggplot2_object + scale_x_discrete(labels = labs$h_name)
 
   return(p)
 }

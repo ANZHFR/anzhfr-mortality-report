@@ -13,17 +13,30 @@ library(crew)
 library(here)
 library(tidyverse)
 library(labelled)
+library(quarto)
 
 # Set target options:
 # strict=TRUE ensures global variables are tracked correctly
 tar_option_set(
   packages = c(
-    "tidyverse", "haven", "readxl", "janitor", "labelled",
-    "Hmisc", "mice", "scales", "ggpubr", "quarto", "kableExtra"
+    "tidyverse",
+    "haven",
+    "readxl",
+    "janitor",
+    "labelled",
+    "Hmisc",
+    "mice",
+    "scales",
+    "ggpubr",
+    "quarto",
+    "kableExtra"
   ),
   format = "qs",
   garbage_collection = 1,
-  controller = crew_controller_local(workers = parallel::detectCores(), crashes_max = 10)
+  controller = crew_controller_local(
+    workers = parallel::detectCores(),
+    crashes_max = 10
+  )
 )
 
 # 2. Source Custom Functions ---------------------------------------------------
@@ -36,10 +49,15 @@ tar_source("R/tedis_review.R")
 csv_datalake <- "/Volumes/fipg/2. ANZHFR projects/10. Jason/anzhfr_mortality_report/Data/csv_datalake/"
 
 # Report Settings
-reportable_years <- 2019:2025
+reportable_years <- 2018:2025
 
 # Model Formulas
-base_form <- ~ age_cat5 + sex_2l + asa_nhfd + walk_nhfd + ftype_nhfd + uresidence_nhfd
+base_form <- ~ age_cat5 +
+  sex_2l +
+  asa_nhfd +
+  walk_nhfd +
+  ftype_nhfd +
+  uresidence_nhfd
 form_mort30d <- update(base_form, mort30d ~ .)
 form_mort120d <- update(base_form, mort120d ~ .)
 form_mort365d <- update(base_form, mort365d ~ .)
@@ -58,7 +76,9 @@ list_etl <- tar_plan(
   # Identify latest file
   tar_target(
     latest_data,
-    tibble(files = list.files(datalake_path, pattern = "\\.csv$", full.names = T)) |>
+    tibble(
+      files = list.files(datalake_path, pattern = "\\.csv$", full.names = T)
+    ) |>
       mutate(filename = basename(files)) |>
       mutate(date_str = str_extract(filename, "^\\d{6}")) |>
       mutate(file_date = ymd(date_str)) |>
@@ -68,15 +88,19 @@ list_etl <- tar_plan(
 
   # Load Hospital Codes
   tar_target(hoscodefile, here::here("data/hoscodes.csv"), format = "file"),
-  tar_target(hoscode_data, readr::read_csv(hoscodefile, show_col_types = FALSE)),
+  tar_target(
+    hoscode_data,
+    readr::read_csv(hoscodefile, show_col_types = FALSE)
+  ),
 
   # Load & Clean Clinical Data
   tar_target(
     raw_data,
-    get_anzhfr_data(latest_data, config_coltype) |>
+    get_anzhfr_data(latest_data) |>
       anzhfr_var_labels() |>
       anzhfr_value_labels()
   ),
+
   tar_target(
     tidy_data,
     raw_data |>
@@ -91,8 +115,7 @@ list_etl <- tar_plan(
   tar_target(tedis_info, get_tedis(patient_journey)),
   tar_target(
     tidy_data_tedis,
-    get_mortality(tidy_data, tedis_info) |>
-      clean_delay()
+    get_mortality(tidy_data, tedis_info)
   )
 )
 
@@ -102,10 +125,14 @@ list_imputation <- tar_plan(
     analysis_data,
     tidy_data_tedis |>
       transform_data() |>
-      left_join(hoscode_data |> select(ahoscode, h_name), by = join_by(ahos_code == ahoscode)) |>
-      filter(!str_detect(ds, "NoMatch")) |>
+      left_join(
+        hoscode_data,
+        by = join_by(ahoscode == ahoscode)
+      ) |>
       filter(surg_yn == "Surgical") |>
-      filter(report_year %in% 2016:(max(reportable_years) - 1))
+      filter(report_year %in% 2016:(max(reportable_years))) |>
+      filter(quality_flag == "L") |> # Include only hospitals with linked data
+      filter(!is.na(mort30d)) # Exclude patients with missing 30-day mortality for modeling
   ),
   tar_target(
     mi_mids,
@@ -138,7 +165,13 @@ list_rolling_model <- tar_map(
   tar_target(
     mi_rolldata,
     mi_mod_data |>
-      map(~ right_join(.x, reportable_hosp, by = c("country", "h_name", "ahos_code", "report_year")))
+      map(
+        ~ right_join(
+          .x,
+          reportable_hosp,
+          by = c("country", "h_name", "ahoscode", "report_id", "report_year")
+        )
+      )
   ),
 
   # Inner map for mortality windows
@@ -148,9 +181,15 @@ list_rolling_model <- tar_map(
       form = c(form_mort30d, form_mort365d)
     ),
     names = name,
-    tar_target(mi_rollmod, mi_rolldata |> map(~ glm(form, data = .x, family = "binomial"))),
+    tar_target(
+      mi_rollmod,
+      mi_rolldata |> map(~ glm(form, data = .x, family = "binomial"))
+    ),
     tar_target(mi_rollpreds, pool.mice.scalar(mi_rollmod)),
-    tar_target(mi_rollamr, summort_by_group(mi_rollpreds, "h_name", all.vars(form)[1])),
+    tar_target(
+      mi_rollamr,
+      summort_by_group(mi_rollpreds, "report_id", all.vars(form)[1])
+    ),
 
     # Plots
     tar_target(
@@ -158,8 +197,13 @@ list_rolling_model <- tar_map(
       fun_funnel_hosp(
         mi_rollamr,
         paste0(
-          "Funnel plot of standarised mortality by ", toupper(reportable_country),
-          " hospitals (", reportable_year - 3, " - ", reportable_year - 1, ")"
+          "Funnel plot of standarised mortality by ",
+          toupper(reportable_country),
+          " hospitals (",
+          reportable_year - 2,
+          " - ",
+          reportable_year,
+          ")"
         )
       )
     ),
@@ -168,8 +212,13 @@ list_rolling_model <- tar_map(
       fun_smort_ctpl_hosp(
         mi_rollamr,
         paste0(
-          "Catepillar plot of standarised mortality by ", toupper(reportable_country),
-          " hospitals (", reportable_year - 3, " - ", reportable_year - 1, ")"
+          "Catepillar plot of standarised mortality by ",
+          toupper(reportable_country),
+          " hospitals (",
+          reportable_year - 2,
+          " - ",
+          reportable_year,
+          ")"
         )
       )
     ),
@@ -178,8 +227,13 @@ list_rolling_model <- tar_map(
       fun_smr_ctpl_hosp(
         mi_rollamr,
         paste0(
-          "Catepillar plot of SMR by ", toupper(reportable_country),
-          " hospitals (", reportable_year - 3, " - ", reportable_year - 1, ")"
+          "Catepillar plot of SMR by ",
+          toupper(reportable_country),
+          " hospitals (",
+          reportable_year - 2,
+          " - ",
+          reportable_year,
+          ")"
         )
       )
     )
@@ -195,19 +249,57 @@ list_longitudinal_model <- tar_map(
   ),
 
   # 30 Day Models
-  tar_target(mi_fullmod_mort30d, mi_fulldata |> map(~ glm(form_mort30d, data = .x, family = "binomial"))),
+  tar_target(
+    mi_fullmod_mort30d,
+    mi_fulldata |> map(~ glm(form_mort30d, data = .x, family = "binomial"))
+  ),
   tar_target(mi_fullpreds_mort30d, pool.mice.scalar(mi_fullmod_mort30d)),
-  tar_target(mi_fullamr_yearly_mort30d, summort_by_group(mi_fullpreds_mort30d, "report_year", all.vars(form_mort30d)[1])),
-  tar_target(mi_fullamr_area_yearly_mort30d, summort_by_group(mi_fullpreds_mort30d, c("report_year", "area"), all.vars(form_mort30d)[1])),
+  tar_target(
+    mi_fullamr_yearly_mort30d,
+    summort_by_group(
+      mi_fullpreds_mort30d,
+      "report_year",
+      all.vars(form_mort30d)[1]
+    )
+  ),
+  tar_target(
+    mi_fullamr_area_yearly_mort30d,
+    summort_by_group(
+      mi_fullpreds_mort30d,
+      c("report_year", "area"),
+      all.vars(form_mort30d)[1]
+    )
+  ),
 
   # 365 Day Models
   tar_target(
     mi_fullmod_mort365d,
-    mi_fulldata |> map(~ glm(form_mort365d, data = .x |> filter(report_year < max(reportable_years) - 1), family = "binomial"))
+    mi_fulldata |>
+      map(
+        ~ glm(
+          form_mort365d,
+          data = .x |> filter(report_year < max(reportable_years)),
+          family = "binomial"
+        )
+      )
   ),
   tar_target(mi_fullpreds_mort365d, pool.mice.scalar(mi_fullmod_mort365d)),
-  tar_target(mi_fullamr_yearly_mort365d, summort_by_group(mi_fullpreds_mort365d, "report_year", all.vars(form_mort365d)[1])),
-  tar_target(mi_fullamr_area_yearly_mort365d, summort_by_group(mi_fullpreds_mort365d, c("report_year", "area"), all.vars(form_mort365d)[1]))
+  tar_target(
+    mi_fullamr_yearly_mort365d,
+    summort_by_group(
+      mi_fullpreds_mort365d,
+      "report_year",
+      all.vars(form_mort365d)[1]
+    )
+  ),
+  tar_target(
+    mi_fullamr_area_yearly_mort365d,
+    summort_by_group(
+      mi_fullpreds_mort365d,
+      c("report_year", "area"),
+      all.vars(form_mort365d)[1]
+    )
+  )
 )
 
 ## Combined Trends & Reporting -------------------------------------------------
@@ -233,9 +325,10 @@ list_reporting <- tar_plan(
   ),
 
   # Quarto Reports
+  ## Mortality Report
   tar_quarto(
     mortality_report,
-    path = here::here("R/mortality_report.qmd"),
+    path = "R/mortality_report.qmd",
     quiet = FALSE
   )
 )
