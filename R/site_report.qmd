@@ -1,0 +1,599 @@
+---
+title: "Site-specific Mortality Report"
+author: "Australian and New Zealand Hip Fracture Registry"
+date: last-modified
+date-format: "DD/MM/YYYY"
+format: 
+    html:
+        page-layout: full
+        toc: false
+        embed-resources: true
+execute: 
+  echo: false
+  warning: false
+  message: false
+params:
+  site_id: "RAH"
+
+---
+
+
+```{r}
+#| results: asis
+
+# kableExtra's bundled kePrint.js relies on jQuery-based Bootstrap 3/4
+# popover initialization (`$(...).popover()`), which doesn't exist under
+# Quarto's Bootstrap 5 JS. Initialize popovers with the native Bootstrap 5
+# API instead.
+htmltools::tags$script(htmltools::HTML(
+  "document.addEventListener('DOMContentLoaded', function () {
+     document.querySelectorAll('[data-toggle=\"popover\"]').forEach(function (el) {
+       new bootstrap.Popover(el, {
+         trigger: 'hover',
+         html: true,
+         container: 'body',
+         placement: el.getAttribute('data-placement') || 'right',
+         content: el.getAttribute('data-content')
+       });
+     });
+   });"
+))
+```
+
+
+```{r pkg}
+library(targets)
+library(tarchetypes)
+library(tidyverse)
+library(gt)
+library(gtsummary)
+library(kableExtra)
+library(plotly)
+```
+
+
+```{r data}
+tar_load(raw_data, store = here::here("_targets"))
+tar_load(analysis_data, store = here::here("_targets"))
+tar_load(hoscode_data, store = here::here("_targets"))
+
+analysis_data <- labelled::set_variable_labels(
+  analysis_data,
+  mort30d = "30-day mortality",
+  mort365d = "365-day mortality"
+)
+```
+
+
+
+# `r hoscode_data$h_name[hoscode_data$report_id == params$site_id]` 
+
+## Number of records contributed to mortality reporting
+
+
+```{r tab_data_contribution}
+
+n_raw <- raw_data |>
+  filter(
+    ahoscode == hoscode_data$ahoscode[hoscode_data$report_id == params$site_id]
+  ) |>
+  mutate(report_year = year(start_date)) |>
+  group_by(report_year) |>
+  tally(name = "n_raw")
+
+n_analysis <- analysis_data |>
+  filter(report_id == params$site_id) |>
+  group_by(report_year) |>
+  tally(name = "n_analysis")
+
+tbl_contribution <- full_join(n_analysis, n_raw, by = "report_year") |>
+  arrange(report_year) |>
+  mutate(
+    text = paste0(
+      n_analysis,
+      " / ",
+      n_raw,
+      " (",
+      scales::percent(n_analysis / n_raw, accuracy = 1),
+      ")"
+    )
+  ) |>
+  select(report_year, text) |>
+  pivot_wider(names_from = report_year, values_from = text)
+
+tbl_contribution |>
+  kbl(format = "html", escape = FALSE)
+```
+
+*Data presented as the number of records included in the analysis / the number of records entered into the registry (%)*
+
+## Patient Demographic Characteristics
+
+::: {.callout-tip}
+## Tip
+Hover over the cells in the table below to see the national reference values.
+:::
+
+
+```{r site_data}
+site_data <- analysis_data |>
+  filter(report_id == params$site_id) |>
+  select(
+    report_year,
+    age,
+    sex_2l,
+    asa_nhfd,
+    walk_nhfd,
+    ftype_nhfd,
+    uresidence_nhfd,
+    mort30d,
+    mort365d
+  ) |>
+  mutate(across(
+    c(sex_2l, asa_nhfd, walk_nhfd, ftype_nhfd, uresidence_nhfd),
+    ~ forcats::fct_na_value_to_level(.x, level = "Missing")
+  ))
+```
+
+```{r ref_data}
+ref_data <-
+  analysis_data |>
+  filter(report_year %in% unique(site_data$report_year)) |>
+  select(
+    report_year,
+    age,
+    sex_2l,
+    asa_nhfd,
+    walk_nhfd,
+    ftype_nhfd,
+    uresidence_nhfd,
+    mort30d,
+    mort365d
+  ) |>
+  mutate(across(
+    c(sex_2l, asa_nhfd, walk_nhfd, ftype_nhfd, uresidence_nhfd),
+    ~ forcats::fct_na_value_to_level(.x, level = "Missing")
+  )) |>
+  tbl_summary(
+    by = report_year,
+    missing = "no",
+    digits = list(all_continuous() ~ 1, all_categorical() ~ c(0, 1)),
+    statistic = list(
+      all_categorical() ~ "{n} ({p}%)",
+      all_continuous() ~ "{mean} ± {sd}"
+    )
+  ) |>
+  modify_header(all_stat_cols() ~ "**{level}**") |>
+  modify_footnote(everything() ~ NA) |>
+  as_tibble() |>
+  rename_with(~ str_remove_all(.x, "\\*")) |>
+  filter(!if_any(everything(), is.na))
+```
+
+
+
+
+```{r demo_table}
+tbl_summary(
+  site_data,
+  by = report_year,
+  missing = "no",
+  digits = list(all_continuous() ~ 1, all_categorical() ~ c(0, 1)),
+  statistic = list(
+    all_categorical() ~ "{n} ({p}%)",
+    all_continuous() ~ "{mean} ± {sd}"
+  )
+) |>
+  modify_header(all_stat_cols() ~ "**{level}**") |>
+  modify_footnote(everything() ~ NA) |>
+  as_tibble() |>
+  rename_with(~ str_remove_all(.x, "\\*")) |>
+  filter(!if_any(everything(), is.na)) |>
+  # show popover for each cell in the table, with content from the reference data
+  mutate(across(
+    -Characteristic,
+    ~ cell_spec(
+      .x,
+      "html",
+      popover = spec_popover(
+        title = "National Reference",
+        content = ref_data[[cur_column()]],
+        trigger = "hover"
+      )
+    )
+  )) |>
+  kbl(format = "html", booktabs = TRUE, escape = FALSE) |>
+  pack_rows("Sex", 2, 4) |>
+  pack_rows("ASA grade", 5, 8) |>
+  pack_rows("Pre-fracture mobility", 9, 12) |>
+  pack_rows("Fracture type", 13, 15) |>
+  pack_rows("Residence", 16, 18) |>
+  pack_rows("30-day mortality", 19, 20) |>
+  pack_rows("365-day mortality", 21, 22)
+```
+
+
+
+
+# Rolling 3-year Risk-adjusted Mortality
+  
+::: {.callout-tip}
+## Tip
+Hover over the points in the funnel plot below to see the number of surgeries and risk-adjusted mortality rate for your site.
+:::
+
+## 30-day Mortality 
+
+```{r 30d_mortality_data}
+
+target_names <- tar_meta(store = here::here("_targets"))$name[
+  str_detect(
+    tar_meta(store = here::here("_targets"))$name,
+    "mi_rollamr_mort30d"
+  ) &
+    str_detect(tar_meta(store = here::here("_targets"))$name, "au")
+]
+# Load them into the environment
+tar_load(any_of(target_names), store = here::here("_targets"))
+
+# Bundle them into a list
+plot_list <- mget(target_names)
+
+# Combine into a single data frame for plotting
+
+dat <- plot_list |>
+  bind_rows(.id = "frame") |>
+  mutate(frame = str_remove(frame, "mi_rollamr_mort30d_")) |>
+  mutate(frame = str_remove(frame, "_au")) |>
+  mutate(report_id = factor(report_id))
+```
+
+```{r dynamic_funnel_function}
+dynamic_funnel <- function(dat) {
+  # Fix a per-site color and opacity up front so both persist across animation frames
+  site_colors <- setNames(
+    scales::hue_pal()(length(levels(dat$report_id))),
+    levels(dat$report_id)
+  )
+  # Convert data to framed data for animation
+  plot_dat <-
+    expand.grid(frame = unique(dat$frame), report_id = levels(dat$report_id)) |>
+    left_join(dat, by = c("frame", "report_id")) |>
+    left_join(hoscode_data |> select(report_id, h_name), by = "report_id") |>
+    mutate(no_data_flag = if_else(is.na(n), 1, 0)) |>
+    arrange(frame) |>
+    fill(smort, .by = report_id, .direction = "down") |>
+    fill(
+      ws_mean,
+      ws_lcl95_exact,
+      ws_ucl95_exact,
+      ws_lcl99_exact,
+      ws_ucl99_exact,
+      .by = frame,
+      .direction = "downup"
+    ) |>
+    mutate(across(where(is.numeric), ~ replace_na(.x, 0))) |>
+
+    # Fix a per-site color and opacity up front so both persist across animation frames
+    mutate(marker_color = site_colors[as.character(report_id)]) |>
+    # Only display stats for the site of interest
+    mutate(
+      marker_text = if_else(
+        report_id == params$site_id,
+        paste0(
+          h_name,
+          " (",
+          report_id,
+          ")",
+          "<br>Surgeries: ",
+          n,
+          "<br>Mortality: ",
+          scales::percent(smort, accuracy = 0.1),
+          " (Crude:",
+          scales::percent(cmort, accuracy = 0.1),
+          ")"
+        ),
+        ""
+      ),
+      marker_opacity = if_else(report_id == params$site_id, 1.0, 0.2),
+    )
+
+  # Foundation plotly skeleton
+
+  fig <- plot_ly(
+    plot_dat,
+    x = ~n,
+    y = ~smort,
+    frame = ~frame,
+    legendgroup = ~report_id,
+    type = "scatter",
+    mode = "markers",
+    marker = list(
+      size = 10,
+      color = ~marker_color,
+      opacity = ~marker_opacity
+    ),
+    text = ~marker_text,
+    hoverinfo = "text",
+    showlegend = FALSE
+  ) |>
+    layout(
+      xaxis = list(title = "Rolling 3-year Surgical Volume", fixedrange = TRUE),
+      yaxis = list(
+        title = "Risk-adjusted Mortality Rate",
+        fixedrange = TRUE,
+        tickformat = ".0%"
+      )
+    ) |>
+    animation_opts(
+      frame = 2000,
+      transition = 1000,
+      easing = "cubic-in-out",
+      redraw = TRUE
+    ) |>
+    animation_slider(
+      currentvalue = list(
+        prefix = "Year ",
+        font = list(color = "rgba(4,66,133,1)")
+      ),
+      bgcolor = "rgba(6,126,195,1)",
+      bordercolor = "rgba(4,66,133,1)",
+      borderwidth = 2,
+      activebgcolor = "rgba(4,66,133,1)"
+    ) |>
+    animation_button(
+      bgcolor = "rgba(6,126,195,1)",
+      borderwidth = 2,
+      bordercolor = "rgba(4,66,133,1)"
+    ) |>
+    config(
+      doubleClick = FALSE,
+      displayModeBar = TRUE,
+      displaylogo = FALSE,
+      modeBarButtonsToRemove = c(
+        "pan2d",
+        "zoom2d",
+        "select2d",
+        "lasso2d",
+        "autoScale2d",
+        "resetScale2d",
+        "zoomIn2d",
+        "zoomOut2d"
+      )
+    )
+
+  # Post rendering customisation
+
+  fig <- plotly_build(fig)
+
+  # Remove the "visible" attribute from each trace in each frame,
+  # therefore selection of a report_id in one frame will be retained in the next frame
+  fig$x$frames <- lapply(fig$x$frames, function(frame) {
+    frame$data <- lapply(frame$data, function(trace) {
+      trace$visible <- NULL
+      trace
+    })
+    frame
+  })
+
+  # Redraw national mean and confidence interval for each frame,
+  # taking into account of the report_id absent in that frame
+
+  frame_ws_mean <- plot_dat |> distinct(frame, ws_mean) |> deframe()
+
+  frame_curves <- plot_dat |>
+    # n = 0 rows are filled-in placeholders (report_id absent that frame),
+    # not real surgical volumes, so they'd distort the curve's start/end
+    filter(no_data_flag == 0) |>
+    select(
+      frame,
+      n,
+      ws_lcl95_exact,
+      ws_ucl95_exact,
+      ws_lcl99_exact,
+      ws_ucl99_exact
+    ) |>
+    arrange(frame, n) |>
+    group_by(frame) |>
+    group_split()
+  names(frame_curves) <- sapply(frame_curves, function(d) d$frame[1])
+
+  hline_shape <- function(y, color = "rgba(6,126,195,1)") {
+    list(
+      type = "line",
+      x0 = 0,
+      x1 = 1,
+      xref = "paper",
+      y0 = y,
+      y1 = y,
+      yref = "y",
+      line = list(color = color, dash = "dash", width = 1.5)
+    )
+  }
+
+  path_shape <- function(
+    x,
+    y,
+    dash = "dot",
+    width = 1,
+    color = "rgba(6,126,195,1)"
+  ) {
+    path <- paste0(
+      "M",
+      x[1],
+      ",",
+      y[1],
+      paste0(" L", x[-1], ",", y[-1], collapse = "")
+    )
+    list(
+      type = "path",
+      path = path,
+      xref = "x",
+      yref = "y",
+      line = list(color = color, dash = dash, width = width)
+    )
+  }
+
+  # Exact binomial control limit at an arbitrary n, using the frame's own ws_mean
+  exact_ci_col <- function(ws_mean, n, alpha, col) {
+    Hmisc::binconf(
+      ws_mean * n,
+      n,
+      alpha = alpha,
+      method = "exact",
+      return.df = TRUE
+    )[[col]]
+  }
+
+  # Each frame's curve only spans that frame's own range of n, so it stops
+  # short of the shared, fixed x-axis edges. Extend it smoothly by evaluating
+  # the exact binomial control-limit formula at extra n values between each
+  # axis edge and the curve's first/last real point (rather than holding a
+  # flat straight line at the endpoint), so the curve keeps following its
+  # true shape all the way to both sides of the plot.
+  extend_curve <- function(n, y, ws_mean, alpha, col, x_range, n_extra = 40) {
+    left_n <- seq(max(x_range[1], 1), n[1], length.out = n_extra)
+    right_n <- seq(n[length(n)], x_range[2], length.out = n_extra)
+    left_y <- exact_ci_col(ws_mean, left_n, alpha, col)
+    right_y <- exact_ci_col(ws_mean, right_n, alpha, col)
+    list(
+      x = c(left_n, n[-1], right_n[-1]),
+      y = c(left_y, y[-1], right_y[-1])
+    )
+  }
+
+  build_shapes_for_frame <- function(frame_name, x_range) {
+    curves <- frame_curves[[frame_name]]
+    ws_mean <- frame_ws_mean[[frame_name]]
+    lcl95 <- extend_curve(
+      curves$n,
+      curves$ws_lcl95_exact,
+      ws_mean,
+      0.05,
+      2,
+      x_range
+    )
+    ucl95 <- extend_curve(
+      curves$n,
+      curves$ws_ucl95_exact,
+      ws_mean,
+      0.05,
+      3,
+      x_range
+    )
+    lcl99 <- extend_curve(
+      curves$n,
+      curves$ws_lcl99_exact,
+      ws_mean,
+      0.003,
+      2,
+      x_range
+    )
+    ucl99 <- extend_curve(
+      curves$n,
+      curves$ws_ucl99_exact,
+      ws_mean,
+      0.003,
+      3,
+      x_range
+    )
+    list(
+      hline_shape(ws_mean),
+      path_shape(lcl95$x, lcl95$y, dash = "dot", color = "rgba(0,115,0,1)"),
+      path_shape(ucl95$x, ucl95$y, dash = "dot", color = "rgba(177,0,0,1)"),
+      path_shape(
+        lcl99$x,
+        lcl99$y,
+        dash = "dashdot",
+        color = "rgba(0,115,0,1)"
+      ),
+      path_shape(
+        ucl99$x,
+        ucl99$y,
+        dash = "dashdot",
+        color = "rgba(177,0,0,1)"
+      )
+    )
+  }
+
+  mean_label_annotation <- function(frame_name) {
+    y <- frame_ws_mean[[frame_name]]
+    list(
+      x = 1,
+      xref = "paper",
+      xanchor = "right",
+      y = 1,
+      yref = "paper",
+      yanchor = "bottom",
+      text = paste("National average:", scales::percent(y, accuracy = 0.1)),
+      showarrow = FALSE,
+      font = list(color = "rgba(4,66,133,1)", size = 20, bold = TRUE),
+      yshift = -100
+    )
+  }
+
+  first_frame_name <- fig$x$frames[[1]]$name
+  axis_range <- fig$x$layout$xaxis$range
+  fig$x$layout$shapes <- build_shapes_for_frame(first_frame_name, axis_range)
+  fig$x$layout$annotations <- list(mean_label_annotation(first_frame_name))
+  fig$x$frames <- lapply(fig$x$frames, function(fr) {
+    fr$layout <- list(
+      shapes = build_shapes_for_frame(fr$name, axis_range),
+      annotations = list(mean_label_annotation(fr$name))
+    )
+    fr
+  })
+
+  return(fig)
+}
+```
+
+
+
+
+```{r dynamic_funnel_30d}
+#| fig-width: 8
+#| fig-height: 8
+
+dynamic_funnel(dat)
+```
+
+
+
+## 365-day Mortality
+
+```{r 365d_mortality_data}
+
+target_names <- tar_meta(store = here::here("_targets"))$name[
+  str_detect(
+    tar_meta(store = here::here("_targets"))$name,
+    "mi_rollamr_mort365d"
+  ) &
+    str_detect(tar_meta(store = here::here("_targets"))$name, "au") &
+    !str_detect(
+      tar_meta(store = here::here("_targets"))$name,
+      as.character(as.numeric(format(Sys.Date(), "%Y")) - 1)
+    )
+]
+# Load them into the environment
+tar_load(any_of(target_names), store = here::here("_targets"))
+
+# Bundle them into a list
+plot_list <- mget(target_names)
+
+# Combine into a single data frame for plotting
+
+dat <- plot_list |>
+  bind_rows(.id = "frame") |>
+  mutate(frame = str_remove(frame, "mi_rollamr_mort365d_")) |>
+  mutate(frame = str_remove(frame, "_au")) |>
+  mutate(report_id = factor(report_id))
+```
+
+```{r dynamic_funnel_365d}
+#| fig-width: 8
+#| fig-height: 8
+
+dynamic_funnel(dat)
+```
+

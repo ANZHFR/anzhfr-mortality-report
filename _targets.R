@@ -330,6 +330,42 @@ list_reporting <- tar_plan(
     mortality_report,
     path = "R/mortality_report.qmd",
     quiet = FALSE
+  ),
+
+  ## Site-specific Reports
+  # One tar_quarto() target per site. Rendering R/site_report.qmd writes
+  # fixed-name intermediate files (e.g. site_report.knit.md) next to the
+  # source, so if two sites render concurrently on different crew workers,
+  # one worker's cleanup deletes/overwrites files the other is still reading,
+  # producing intermittent "cannot open file 'site_report.qmd'" or "failed to
+  # move" errors. deployment = "main" forces these targets to run one at a
+  # time in the main process instead of being farmed out to parallel workers.
+  purrr::map(
+    # hosp_to_report is a target, not an object in this script's environment,
+    # so its value must be pulled from the targets store (tar_read()) rather
+    # than referenced directly. On a completely fresh store (before
+    # hosp_to_report has ever been built), fall back to an empty vector of
+    # site ids so the pipeline can still be constructed; re-run tar_make()
+    # once hosp_to_report exists to generate the real per-site targets.
+    bind_rows(tar_read(hosp_to_report)) |>
+      filter(reportable == TRUE) |>
+      filter(country == "au") |>
+      distinct(report_id) |>
+      pull(report_id),
+    ~ tarchetypes::tar_quarto_raw(
+      name = paste0("site_report_", .x),
+      path = "R/site_report.qmd",
+      quiet = FALSE,
+      deployment = "main",
+      # execute_params must be an unevaluated language object (per
+      # tar_quarto_raw()'s assertions), so splice the site id in as a literal
+      # rather than passing an evaluated list().
+      execute_params = bquote(list(site_id = .(.x))),
+      # Quarto's project mode (_quarto.yml has execute-dir: project) requires
+      # output_file to be a bare filename, not a path; the directory is
+      # governed by _quarto.yml's output-dir instead.
+      output_file = paste0("site_report_", .x, ".html")
+    )
   )
 )
 
